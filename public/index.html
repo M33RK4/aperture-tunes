@@ -15,9 +15,18 @@
     <div class="dragbar"></div>
 
     <div class="winctl" id="winctl" hidden>
-      <button data-win="min" title="Minimize">_</button>
-      <button data-win="max" title="Maximize">&#9633;</button>
-      <button data-win="close" title="Close">&#x2715;</button>
+      <button class="optbtn" id="btnOpts" title="Options"><svg viewBox="0 0 12 12"><path d="M1 3h10M1 6h10M1 9h10"/></svg></button>
+      <button data-win="min" title="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5.5h8"/></svg></button>
+      <button data-win="max" title="Maximize"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8"/></svg></button>
+      <button data-win="close" title="Close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
+    </div>
+
+    <div class="opts-menu" id="optsMenu" hidden>
+      <div class="t">OPTIONS</div>
+      <div class="o">
+        <div>WINDOW BUTTONS</div>
+        <div class="seg"><button class="cmd" data-side="left">[ LEFT ]</button><button class="cmd" data-side="right">[ RIGHT ]</button></div>
+      </div>
     </div>
 
     <div class="hud">
@@ -58,24 +67,25 @@
       <button class="cmd" id="btnAdd">[ ADD ]</button>
       <button class="cmd" id="btnScan">[ TEST ]</button>
       <button class="cmd hot" id="btnApply">[ APPLY ]</button>
-      <button class="cmd hot" id="btnSave" hidden>[ SAVE FOLDER ]</button>
+      <button class="cmd hot" id="btnSave" hidden>[ SAVE ]</button>
       <button class="cmd" id="btnOpen" hidden>[ OPEN ]</button>
       <button class="cmd" id="btnReset">[ CLEAR ]</button>
     </div>
 
     <div class="fb" id="fb" hidden>
-      <div class="fb-title"><span>APERTURE TUNES // FILE ACCESS TERMINAL</span><button class="cmd" id="fbClose">[ X ]</button></div>
+      <div class="fb-title"><span id="fbTitle">APERTURE TUNES // FILE ACCESS TERMINAL</span><button class="cmd" id="fbClose">[ X ]</button></div>
       <div class="fb-path">
         <button class="cmd" id="fbUp">[ UP ]</button>
         <span class="gt">&gt;</span>
         <input id="fbPath" spellcheck="false" title="Type a folder path and press Enter">
-        <label class="check"><input type="checkbox" id="fbAll"><span></span>SHOW ALL FILES</label>
+        <label class="check browse-only"><input type="checkbox" id="fbAll"><span></span>SHOW ALL FILES</label>
       </div>
       <div class="fb-body">
         <div class="fb-side">
           <div class="h">LOCATIONS</div><div id="fbLocs"></div>
           <div class="h">DRIVES</div><div id="fbDrives"></div>
         </div>
+        <div class="splitter" id="fbSplit"></div>
         <div class="fb-list">
           <div class="fb-row head"><span></span><span>NAME</span><span class="r">SIZE</span><span class="r">MODIFIED</span></div>
           <div id="fbRows"></div>
@@ -83,11 +93,29 @@
       </div>
       <div class="fb-foot">
         <span class="info" id="fbInfo"></span>
-        <label class="check"><input type="checkbox" id="fbRec"><span></span>INCLUDE SUBFOLDERS</label>
-        <button class="cmd" id="fbSelAll">[ SELECT ALL ]</button>
-        <button class="cmd" id="fbFolder">[ ADD WHOLE FOLDER ]</button>
+        <label class="check browse-only"><input type="checkbox" id="fbRec"><span></span>INCLUDE SUBFOLDERS</label>
+        <button class="cmd browse-only" id="fbSelAll">[ SELECT ALL ]</button>
+        <button class="cmd browse-only" id="fbFolder">[ ADD WHOLE FOLDER ]</button>
         <button class="cmd" id="fbCancel">[ CANCEL ]</button>
-        <button class="cmd hot" id="fbLoad">[ LOAD ]</button>
+        <button class="cmd hot browse-only" id="fbLoad">[ LOAD ]</button>
+        <button class="cmd hot pick-only" id="fbSaveHere">[ SAVE HERE ]</button>
+      </div>
+    </div>
+
+    <div class="dlg" id="saveDlg" hidden>
+      <div class="dlgbox">
+        <div class="t">APERTURE TUNES // SPECIMEN STORAGE</div>
+        <div class="b" id="saveChoose">
+          <div id="saveHead"></div>
+          <button class="choice" id="saveOverwrite"><b>[ OVERWRITE ORIGINALS ]</b><span>Puts the tagged songs back where you picked them from, renamed to the clean title. The old untagged files are replaced.</span></button>
+          <button class="choice" id="saveNew"><b>[ NEW FOLDER ]</b><span>Makes a "Tagged Songs" folder with a subfolder for each album. Your original files stay untouched.</span></button>
+          <div class="act"><button class="cmd" id="saveCancel">[ CANCEL ]</button></div>
+        </div>
+        <div class="b" id="saveConfirm" hidden>
+          <div class="warn" id="saveWarn"></div>
+          <div id="saveSkip"></div>
+          <div class="act"><button class="cmd" id="saveBack">[ BACK ]</button><button class="cmd hot" id="saveYes">[ YES, OVERWRITE ]</button></div>
+        </div>
       </div>
     </div>
 

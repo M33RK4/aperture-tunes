@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,19 +59,7 @@ ipcMain.on('win', (e, action) => {
   else if (action === 'close') win.close();
 });
 
-ipcMain.handle('save-folder', async () => {
-  if (!fs.existsSync(OUTPUT)) return { error: 'Nothing processed yet' };
-  const pick = await dialog.showOpenDialog(win, {
-    title: 'Choose where to save "Tagged Songs"',
-    properties: ['openDirectory', 'createDirectory'],
-  });
-  if (pick.canceled || !pick.filePaths[0]) return { canceled: true };
-  let dest = path.join(pick.filePaths[0], 'Tagged Songs');
-  for (let n = 2; fs.existsSync(dest); n++) dest = path.join(pick.filePaths[0], `Tagged Songs (${n})`);
-  fs.cpSync(OUTPUT, dest, { recursive: true });
-  shell.openPath(dest);
-  return { path: dest };
-});
+ipcMain.handle('open-path', (e, p) => (p && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
 
 ipcMain.handle('open-output', () => (fs.existsSync(OUTPUT) ? shell.openPath(OUTPUT) : 'Nothing processed yet'));
 

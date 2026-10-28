@@ -47,7 +47,11 @@ Some antivirus programs may also be suspicious of it for the same reason. Only d
    - Click **[ EDIT ]** on a song to pick a different match, change any field, or search again with your own text, like `Artist - Song`.
    - Untick a song to leave it out.
    - **VERIFY** (in blue) means it wasn't fully sure, so give that one a look.
-4. Click **[ APPLY ]**, then **[ SAVE FOLDER ]**, and choose where the **Tagged Songs** folder should go.
+4. Click **[ APPLY ]**, then **[ SAVE ]** and pick one:
+   - **Overwrite originals:** puts the tagged songs back where they came from, renamed to the clean title. The old untagged files are replaced, so it asks first. Songs you dragged in can't be overwritten, only ones picked in the file browser.
+   - **New folder:** pick a spot and it makes a **Tagged Songs** folder there, with a subfolder for each album. Your originals stay untouched.
+
+The **☰** button next to the window buttons opens the options, where you can move the window buttons to the right (the clock and logo then swap to the left).
 
 Options at the bottom:
 

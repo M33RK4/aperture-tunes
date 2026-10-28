@@ -133,12 +133,16 @@ app.post('/api/apply', async (req, res) => {
 
       let base = safeFilename(titleNoFeat);
       if (options.trackPrefix && m.trackNumber) base = `${String(m.trackNumber).padStart(2, '0')} - ${base}`;
+      // every album gets its own subfolder
+      const album = safeFilename(m.album || 'Unknown Album');
       let name = base + f.ext;
-      for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n})${f.ext}`;
-      used.add(name.toLowerCase());
+      for (let n = 2; used.has(`${album}/${name}`.toLowerCase()); n++) name = `${base} (${n})${f.ext}`;
+      used.add(`${album}/${name}`.toLowerCase());
 
-      const dest = path.join(OUTPUT, name);
+      fs.mkdirSync(path.join(OUTPUT, album), { recursive: true });
+      const dest = path.join(OUTPUT, album, name);
       fs.copyFileSync(f.path, dest);
+      f.out = { dest, name };
 
       let cover = null;
       if (item.coverUrl) {
@@ -146,12 +150,53 @@ app.post('/api/apply', async (req, res) => {
         cover = coverCache.get(item.coverUrl);
       }
       await writeTags(dest, f.ext, m, cover);
-      results.push({ id: item.id, ok: true, filename: name, cover: !!cover });
+      results.push({ id: item.id, ok: true, filename: name, cover: !!cover, canOverwrite: !isUpload(f) });
     } catch (e) {
       results.push({ id: item.id, ok: false, error: e.message });
     }
   }
   res.json({ outputDir: OUTPUT, results });
+});
+
+// dropped files only exist as temp copies, so only files picked in the browser can be overwritten
+const isUpload = (f) => path.resolve(f.path).toLowerCase().startsWith(path.resolve(UPLOADS).toLowerCase() + path.sep);
+
+// mode "folder": copies Tagged Songs (with the album subfolders) into dir
+// mode "overwrite": puts the tagged songs back where the originals were, renamed to the clean title
+app.post('/api/save', (req, res) => {
+  const { mode, dir } = req.body;
+  if (!fs.existsSync(OUTPUT)) return res.status(400).json({ error: 'Nothing processed yet' });
+  try {
+    if (mode === 'folder') {
+      if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return res.status(400).json({ error: 'That folder does not exist' });
+      let dest = path.join(dir, 'Tagged Songs');
+      for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `Tagged Songs (${n})`);
+      fs.cpSync(OUTPUT, dest, { recursive: true });
+      return res.json({ path: dest });
+    }
+    if (mode === 'overwrite') {
+      let written = 0, skipped = 0;
+      for (const f of files.values()) {
+        if (!f.out || !fs.existsSync(f.out.dest)) continue;
+        if (isUpload(f) || !fs.existsSync(f.path)) { skipped++; continue; }
+        const folder = path.dirname(f.path);
+        const ext = path.extname(f.out.name);
+        const base = f.out.name.slice(0, -ext.length);
+        let target = path.join(folder, f.out.name);
+        // don't clobber a different song that already has this name
+        for (let n = 2; target.toLowerCase() !== f.path.toLowerCase() && fs.existsSync(target); n++) target = path.join(folder, `${base} (${n})${ext}`);
+        fs.copyFileSync(f.out.dest, target);
+        if (target.toLowerCase() !== f.path.toLowerCase()) fs.unlinkSync(f.path);
+        f.path = target;
+        f.name = path.basename(target);
+        written++;
+      }
+      return res.json({ written, skipped });
+    }
+    res.status(400).json({ error: 'Unknown save mode' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/reset', (req, res) => {

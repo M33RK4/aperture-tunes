@@ -9,7 +9,7 @@ const QUIPS = {
   scanning: (i, n) => `Analyzing specimen ${i} of ${n}. Please remain calm.`,
   scanned: (ok, review, bad) => `Analysis complete. ${ok} confirmed, ${review} need verification, ${bad} failed. Review, then [ APPLY ].`,
   applying: 'Applying metadata. Do not touch the specimens.',
-  done: (n) => `${n} specimen${n === 1 ? '' : 's'} successfully enriched. [ SAVE FOLDER ] to keep them.`,
+  done: (n) => `${n} specimen${n === 1 ? '' : 's'} successfully enriched. [ SAVE ] to keep them.`,
 };
 
 function say(msg) { $('#status').textContent = msg; }
@@ -36,7 +36,38 @@ async function initProfile() {
 function showUser() {
   $('#username').textContent = profile.username || '—';
   $('#st2').textContent = profile.taggedTotal || 0;
+  applyLayout();
 }
+function applyLayout() {
+  const right = profile.controls === 'right';
+  screen.classList.toggle('swap', right);
+  document.querySelectorAll('[data-side]').forEach((b) => b.classList.toggle('on', (b.dataset.side === 'right') === right));
+  if (profile.sideWidth) $('.fb-side').style.width = `${profile.sideWidth}px`;
+}
+
+$('#btnOpts').addEventListener('click', (e) => { e.stopPropagation(); $('#optsMenu').hidden = !$('#optsMenu').hidden; });
+document.addEventListener('click', (e) => { if (!e.target.closest('#optsMenu')) $('#optsMenu').hidden = true; });
+document.querySelectorAll('[data-side]').forEach((b) => b.addEventListener('click', async () => {
+  profile = await store.set({ controls: b.dataset.side });
+  applyLayout();
+}));
+
+// dragging the line between locations and files
+$('#fbSplit').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  const side = $('.fb-side');
+  const startX = e.clientX, startW = side.offsetWidth;
+  $('#fbSplit').classList.add('drag');
+  const move = (ev) => { side.style.width = `${Math.max(110, Math.min(400, startW + ev.clientX - startX))}px`; };
+  const up = async () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    $('#fbSplit').classList.remove('drag');
+    profile = await store.set({ sideWidth: side.offsetWidth });
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+});
 function askName() {
   $('#login').hidden = false;
   $('#loginName').value = profile.username || '';
@@ -185,10 +216,14 @@ const fb = {
   selected: new Map(), // remembers what you ticked even when you change folder
   anchor: -1, // last clicked row, for shift-click
   roots: null,
+  pick: false, // true when it's choosing where to save instead of picking songs
 };
 
-async function openBrowser() {
+async function openBrowser(pick = false) {
   if (busy) return;
+  fb.pick = pick;
+  $('#fb').classList.toggle('pick', pick);
+  $('#fbTitle').textContent = pick ? 'APERTURE TUNES // SELECT STORAGE LOCATION' : 'APERTURE TUNES // FILE ACCESS TERMINAL';
   $('#fb').hidden = false;
   if (!fb.roots) {
     fb.roots = await (await fetch('/api/fs/roots')).json();
@@ -238,6 +273,12 @@ function fbRender() {
 }
 
 function fbFooter() {
+  if (fb.pick) {
+    $('#fbInfo').textContent = `SAVES TO: ${fb.cwd.split(/[\\/]/).filter(Boolean).pop() || fb.cwd}\\Tagged Songs`;
+    $('#fbInfo').title = fb.cwd;
+    return;
+  }
+  $('#fbInfo').title = '';
   const n = fb.selected.size;
   const bytes = [...fb.selected.values()].reduce((a, b) => a + b, 0);
   $('#fbInfo').textContent = n ? `${n} SELECTED // ${fmtSize(bytes)}` : 'NOTHING SELECTED';
@@ -255,7 +296,7 @@ $('#fbRows').addEventListener('click', (ev) => {
   const i = Number(row.dataset.i);
   const e = fb.entries[i];
   if (e.dir) return fbGo(e.path);
-  if (!e.audio) return;
+  if (!e.audio || fb.pick) return;
   if (ev.shiftKey && fb.anchor >= 0) {
     // shift-click ticks (or unticks) everything between your last click and this one
     const on = !fb.selected.has(e.path);
@@ -301,9 +342,10 @@ document.addEventListener('keydown', (e) => {
   if ($('#fb').hidden || e.target === $('#fbPath')) return;
   if (e.key === 'Escape') closeBrowser();
   else if (e.key === 'Backspace' && fb.parent) fbGo(fb.parent);
+  else if (e.key === 'Enter' && fb.pick) $('#fbSaveHere').click();
   else if (e.key === 'Enter' && fb.selected.size) $('#fbLoad').click();
 });
-['#btnBrowse', '#btnAdd'].forEach((s) => $(s).addEventListener('click', openBrowser));
+['#btnBrowse', '#btnAdd'].forEach((s) => $(s).addEventListener('click', () => openBrowser()));
 
 $('#btnScan').addEventListener('click', async () => {
   if (busy) return;
@@ -528,6 +570,7 @@ $('#btnApply').addEventListener('click', async () => {
     }
     profile = await store.set({ taggedTotal: (profile.taggedTotal || 0) + ok.length });
     showUser();
+    lastApply = ok;
     showExtract(ok.length > 0);
     say(QUIPS.done(ok.length) + (failed.length ? ` ${failed.length} failed.` : ''));
   } catch (e) {
@@ -538,15 +581,64 @@ $('#btnApply').addEventListener('click', async () => {
   updateButtons();
 });
 
-// save/open only work in the desktop app, so they stay hidden in a normal browser
+// open only works in the desktop app, so it stays hidden in a normal browser
 function showExtract(on) {
-  $('#btnSave').hidden = !(on && desktop);
+  $('#btnSave').hidden = !on;
   $('#btnOpen').hidden = !(on && desktop);
 }
-$('#btnSave').addEventListener('click', async () => {
-  const r = await window.aperture.saveFolder();
-  if (r.path) say(`Folder saved to ${r.path}. Thank you for testing with Aperture Tunes.`);
-  else if (r.error) say(r.error);
+let lastApply = [];
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+async function save(body) {
+  const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Save failed');
+  return data;
+}
+function closeSave() { $('#saveDlg').hidden = true; }
+function saveStep(confirm) {
+  $('#saveChoose').hidden = confirm;
+  $('#saveConfirm').hidden = !confirm;
+}
+
+$('#btnSave').addEventListener('click', () => {
+  if (busy || !lastApply.length) return;
+  // dropped files are temp copies with nowhere to go back to, so they can't be overwritten
+  const canOver = lastApply.filter((r) => r.canOverwrite).length;
+  const dropped = lastApply.length - canOver;
+  $('#saveHead').textContent = `> ${plural(lastApply.length, 'specimen')} enriched. Where should they go?`;
+  $('#saveOverwrite').disabled = !canOver;
+  $('#saveOverwrite').title = canOver ? '' : 'Only works for songs picked in the file browser';
+  $('#saveWarn').textContent = `> WARNING: this replaces ${plural(canOver, 'original file')}. It can't be undone.`;
+  $('#saveSkip').textContent = dropped ? `${plural(dropped, 'dropped-in song')} ${dropped === 1 ? 'has' : 'have'} no original location and will be skipped.` : '';
+  $('#saveSkip').hidden = !dropped;
+  saveStep(false);
+  $('#saveDlg').hidden = false;
+});
+$('#saveCancel').addEventListener('click', closeSave);
+$('#saveOverwrite').addEventListener('click', () => saveStep(true));
+$('#saveBack').addEventListener('click', () => saveStep(false));
+$('#saveYes').addEventListener('click', async () => {
+  closeSave();
+  try {
+    const r = await save({ mode: 'overwrite' });
+    say(`${plural(r.written, 'original')} overwritten${r.skipped ? `, ${r.skipped} skipped` : ''}. Thank you for testing with Aperture Tunes.`);
+  } catch (e) {
+    say(`Facility malfunction: ${e.message}`);
+  }
+});
+$('#saveNew').addEventListener('click', () => {
+  closeSave();
+  openBrowser(true);
+});
+$('#fbSaveHere').addEventListener('click', async () => {
+  closeBrowser();
+  try {
+    const r = await save({ mode: 'folder', dir: fb.cwd });
+    say(`Folder saved to ${r.path}. Thank you for testing with Aperture Tunes.`);
+    window.aperture?.openPath(r.path);
+  } catch (e) {
+    say(`Facility malfunction: ${e.message}`);
+  }
 });
 $('#btnOpen').addEventListener('click', () => window.aperture.openOutput());
 
@@ -554,6 +646,7 @@ $('#btnReset').addEventListener('click', async () => {
   if (busy) return;
   await fetch('/api/reset', { method: 'POST' });
   items.length = 0;
+  lastApply = [];
   $('#list').innerHTML = '';
   showExtract(false);
   showWork(false);
