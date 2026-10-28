@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+
+  <title>Aperture Tunes</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="aperture-science.svg">
+</head>
+<body>
+  <div class="screen" id="screen">
+    <div class="frame"></div>
+    <div class="dragbar"></div>
+
+    <div class="winctl" id="winctl" hidden>
+      <button data-win="min" title="Minimize">_</button>
+      <button data-win="max" title="Maximize">&#9633;</button>
+      <button data-win="close" title="Close">&#x2715;</button>
+    </div>
+
+    <div class="hud">
+      <div class="clock"><div id="time">--:--</div><div id="date">--/--/----</div></div>
+      <div class="box matrix"><canvas id="matrix"></canvas></div>
+      <div class="box stats" title="">
+        <div id="st1" title="Average match confidence">-.--</div>
+        <div id="st2" title="Songs tagged, all time">0</div>
+        <div id="st3" title="Session time (minutes)">0.0</div>
+      </div>
+      <div class="box mini"><div class="logo spin"></div></div>
+    </div>
+
+    <section class="home" id="home">
+      <div class="glow"><div class="logo big"></div></div>
+      <div class="wordmark">APERTURE</div>
+      <div class="tagline">TUNES</div>
+      <button class="prompt" id="btnBrowse">&gt; DROP AUDIO FILES OR <u>CLICK TO BROWSE</u><span class="cursor">_</span></button>
+    </section>
+
+    <section class="work" id="work" hidden>
+      <div class="workhead">
+        <div class="mark"><div class="glow sm"><div class="logo"></div></div><span>APERTURE</span><em>TUNES</em></div>
+        <div class="chamber">TEST CHAMBER <b id="chamber">01</b></div>
+      </div>
+      <div class="status"><span class="gt">&gt;</span> <span id="status"></span><span class="cursor">_</span></div>
+      <div class="progress"><div class="bar" id="bar"></div></div>
+      <ul class="list" id="list"></ul>
+      <div class="opts">
+        <span id="counts"></span>
+        <label class="check"><input type="checkbox" id="optFeat"><span></span>FEAT. IN TITLE</label>
+        <label class="check"><input type="checkbox" id="optPrefix"><span></span>TRACK # IN FILENAME</label>
+      </div>
+    </section>
+
+    <div class="user" id="user" title="Click to change user">User: <span id="username">—</span></div>
+    <div class="cmds" id="cmds" hidden>
+      <button class="cmd" id="btnAdd">[ ADD ]</button>
+      <button class="cmd" id="btnScan">[ TEST ]</button>
+      <button class="cmd hot" id="btnApply">[ APPLY ]</button>
+      <button class="cmd hot" id="btnSave" hidden>[ SAVE FOLDER ]</button>
+      <button class="cmd" id="btnOpen" hidden>[ OPEN ]</button>
+      <button class="cmd" id="btnReset">[ CLEAR ]</button>
+    </div>
+
+    <div class="fb" id="fb" hidden>
+      <div class="fb-title"><span>APERTURE TUNES // FILE ACCESS TERMINAL</span><button class="cmd" id="fbClose">[ X ]</button></div>
+      <div class="fb-path">
+        <button class="cmd" id="fbUp">[ UP ]</button>
+        <span class="gt">&gt;</span>
+        <input id="fbPath" spellcheck="false" title="Type a folder path and press Enter">
+        <label class="check"><input type="checkbox" id="fbAll"><span></span>SHOW ALL FILES</label>
+      </div>
+      <div class="fb-body">
+        <div class="fb-side">
+          <div class="h">LOCATIONS</div><div id="fbLocs"></div>
+          <div class="h">DRIVES</div><div id="fbDrives"></div>
+        </div>
+        <div class="fb-list">
+          <div class="fb-row head"><span></span><span>NAME</span><span class="r">SIZE</span><span class="r">MODIFIED</span></div>
+          <div id="fbRows"></div>
+        </div>
+      </div>
+      <div class="fb-foot">
+        <span class="info" id="fbInfo"></span>
+        <label class="check"><input type="checkbox" id="fbRec"><span></span>INCLUDE SUBFOLDERS</label>
+        <button class="cmd" id="fbSelAll">[ SELECT ALL ]</button>
+        <button class="cmd" id="fbFolder">[ ADD WHOLE FOLDER ]</button>
+        <button class="cmd" id="fbCancel">[ CANCEL ]</button>
+        <button class="cmd hot" id="fbLoad">[ LOAD ]</button>
+      </div>
+    </div>
+
+    <div class="login" id="login" hidden>
+      <div class="loginbox">
+        <div class="lt">APERTURE TUNES // PERSONNEL IDENTIFICATION</div>
+        <div class="ll">Welcome to the Aperture Tunes Audio Enrichment Center.</div>
+        <div class="ll">Please identify yourself, test subject.</div>
+        <form id="loginForm"><span>&gt; USERNAME:</span><input id="loginName" maxlength="24" autocomplete="off" spellcheck="false"></form>
+      </div>
+    </div>
+  </div>
+  <div class="crt"></div>
+
+  <template id="rowTpl">
+    <li class="row">
+      <div class="row-head">
+        <label class="check"><input type="checkbox" class="include" checked><span></span></label>
+        <div class="cover"><img alt=""></div>
+        <div class="names">
+          <div class="new"></div>
+          <div class="sub"></div>
+        </div>
+        <div class="state"></div>
+        <button class="cmd small toggle">[ EDIT ]</button>
+      </div>
+      <div class="editor" hidden>
+        <div class="old"></div>
+        <div class="line"><select class="cands"></select></div>
+        <div class="line">
+          <input class="term" placeholder="Search again: Artist - Title" spellcheck="false">
+          <button class="cmd small search">[ SEARCH ]</button>
+        </div>
+        <div class="fields">
+          <label class="w2">TITLE<input data-f="title"></label>
+          <label class="w2">ARTIST<input data-f="artist"></label>
+          <label class="w2">ALBUM<input data-f="album"></label>
+          <label class="w2">ALBUM ARTIST<input data-f="albumArtist"></label>
+          <label>TRACK<input data-f="trackNumber" inputmode="numeric"></label>
+          <label>OF<input data-f="trackCount" inputmode="numeric"></label>
+          <label>DISC<input data-f="discNumber" inputmode="numeric"></label>
+          <label>YEAR<input data-f="year" inputmode="numeric"></label>
+          <label class="w2">GENRE<input data-f="genre"></label>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
