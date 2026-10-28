@@ -317,13 +317,36 @@ $('#btnScan').addEventListener('click', async () => {
     showProgress(i / todo.length);
     await identifyItem(todo[i]);
   }
+  say('Cross-referencing albums. Keeping your songs together.');
+  const grouped = await unifyAlbums();
   hideProgress();
   busy = false;
   setStep(3);
   const c = (s) => items.filter((it) => it.state === s).length;
-  say(QUIPS.scanned(c('done'), c('review'), c('nomatch') + c('error')));
+  say(QUIPS.scanned(c('done'), c('review'), c('nomatch') + c('error')) + grouped);
   updateButtons();
 });
+
+// moves songs by the same artist onto the one album that has most of them (see unifyAlbums in lookup.js)
+async function unifyAlbums() {
+  const songs = items.filter((it) => it.meta && it.candidates[it.sel]).map((it) => ({ id: it.id, best: it.candidates[it.sel] }));
+  if (songs.length < 2) return '';
+  try {
+    const res = await fetch('/api/unify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ songs }) });
+    if (!res.ok) return '';
+    const { picks, summary } = await res.json();
+    for (const [id, track] of Object.entries(picks)) {
+      const it = items.find((x) => x.id === id);
+      it.candidates = [track, ...it.candidates.filter((c) => c.sourceId !== track.sourceId)];
+      choose(it, 0);
+      renderRow(it);
+    }
+    updateCounts();
+    return summary.map((s) => ` Kept ${s.count} songs together on "${s.album}".`).join('');
+  } catch {
+    return '';
+  }
+}
 
 async function identifyItem(it, term) {
   it.state = 'scanning';

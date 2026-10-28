@@ -6,7 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseFilename, cleanTitle, stripFeat, safeFilename } from './lib/clean.js';
-import { identify, fetchImage } from './lib/lookup.js';
+import { identify, unifyAlbums, fetchImage } from './lib/lookup.js';
 import { readExisting, writeTags, SUPPORTED } from './lib/tagger.js';
 import { roots, list, scan } from './lib/files.js';
 
@@ -80,7 +80,9 @@ app.post('/api/identify/:id', async (req, res) => {
       // you typed your own search, like "Artist - Title"
       const t = parseFilename(req.body.term + '.x');
       const query = { title: t.title, rawTitle: t.title, artist: t.artist, durationMs: existing.durationMs };
-      return res.json({ query, candidates: await identify(query) });
+      const { candidates, albumIds } = await identify(query);
+      Object.assign(f, { query, albumIds });
+      return res.json({ query, candidates });
     }
     const fromName = parseFilename(f.name);
     // use the tags already in the file if there are any, cleaned up the same way as filenames
@@ -88,8 +90,23 @@ app.post('/api/identify/:id', async (req, res) => {
     const title = existing.title ? cleanTitle(existing.title) : fromName.title;
     const artist = existing.artist ? existing.artist : fromName.artist;
     const query = { title, rawTitle, artist, album: existing.album, durationMs: existing.durationMs };
-    const candidates = await identify(query);
+    const { candidates, albumIds } = await identify(query);
+    Object.assign(f, { query, albumIds });
     res.json({ query, candidates });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// runs after all songs are matched: puts songs from the same artist onto one album
+// body: { songs: [{ id, best }] } where best is the match currently picked for that song
+app.post('/api/unify', async (req, res) => {
+  try {
+    const songs = (req.body.songs || [])
+      .map((s) => ({ ...s, f: files.get(s.id) }))
+      .filter((s) => s.f?.query)
+      .map((s) => ({ id: s.id, best: s.best, query: s.f.query, albumIds: s.f.albumIds || [] }));
+    res.json(await unifyAlbums(songs));
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
