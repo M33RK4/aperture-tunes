@@ -1,6 +1,6 @@
 # Aperture Tunes
 
-Have you ever downloaded a song online and when you opened a music manager app on your phone you realized that the tags were off? Well thats what this little program that I made for myself is for. It cleans up your music files. Its styled like the screens you see on the monitors in Portal because I really love Portal and music. For now I am satisfied with it just being a tag program but I plan on eventually turning it into a music player.
+Have you ever downloaded a song online and when you opened a music manager app on your phone you realized that the tags were off? Well thats what this little program that I made for myself is for. It cleans up your music files. Its styled like the screens you see on the monitors in Portal because I really love Portal and music. For now I am satisfied with it just being a tag program but I plan on eventually turning it into a music player. Also keep in mind that this is still not bug free so I will be working on that.
 
 I made it with the assistance of Opus 5.5
 
