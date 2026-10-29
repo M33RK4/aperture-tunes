@@ -11,7 +11,7 @@ You drop your songs in, and it looks each one up online and fixes it:
 - **Filename:** renames the file to just the song title, so `01. Artist - Song (Official Video) [320kbps].mp3` becomes `Song.mp3`.
 - **Artist:** tags only the **main artist**, so songs with features don't scatter across your music app. "Calvin Harris, Dua Lipa" is tagged as just Calvin Harris.
 
-When it's done, you save a folder with all the fixed songs wherever you like. **Your original files are never changed.**
+When it's done, you choose: either **overwrite your original files** with the fixed ones, or save the fixed songs into a **new folder**, sorted by album, wherever you like. Nothing touches your originals until you pick overwrite and confirm it.
 
 This is a personal fan project, not a real product. It isn't for sale and isn't affiliated with Valve in any way.
 
@@ -19,8 +19,8 @@ This is a personal fan project, not a real product. It isn't for sale and isn't 
 
 ## Installing
 
-1. Run **`Aperture Tunes Setup.exe`**. It installs and puts a shortcut on your desktop.
-   (If you got **`Aperture Tunes Portable.exe`** instead, just double-click it. Nothing gets installed.)
+1. Run **`Aperture Tunes Setup.exe`**. It asks where to install it and whether you want a desktop shortcut.
+   (If you got **`Aperture Tunes Portable.exe`** instead, just double-click it. Nothing gets installed, it just starts a bit slower each time.)
 2. The first time you open it, it asks for a username. That's only for the screen. It stays on your PC and isn't sent anywhere.
 
 ### ⚠ Security warning (for the antivirus protections)
@@ -41,6 +41,7 @@ Some antivirus programs may also be suspicious of it for the same reason. Only d
    - Click folders to open them. **[ UP ]** goes back a level, and you can also type a path into the bar.
    - Tick the songs you want. **Shift-click** selects a range, and **[ SELECT ALL ]** grabs the whole folder.
    - **[ ADD WHOLE FOLDER ]** loads every song in the folder. Tick **INCLUDE SUBFOLDERS** to dig into the folders inside it too.
+   - Drag the line between the side list and the files to make the side list wider or narrower.
    - Then **[ LOAD ]**. It remembers the last folder you were in.
 2. Click **[ TEST ]**. It looks up each song, at about 20 songs a minute (the music databases limit how fast it can ask).
 3. **Check the results.** Every song shows what it matched and how confident it is (`|||||||||. 94%`).
@@ -48,12 +49,10 @@ Some antivirus programs may also be suspicious of it for the same reason. Only d
    - Untick a song to leave it out.
    - **VERIFY** (in blue) means it wasn't fully sure, so give that one a look.
 4. Click **[ APPLY ]**, then **[ SAVE ]** and pick one:
-   - **Overwrite originals:** puts the tagged songs back where they came from, renamed to the clean title. The old untagged files are replaced, so it asks first. Songs you dragged in can't be overwritten, only ones picked in the file browser.
-   - **New folder:** pick a spot and it makes a **Tagged Songs** folder there, with a subfolder for each album. Your originals stay untouched.
+   - **Overwrite originals:** puts the tagged songs back where they came from, renamed to the clean title. The old untagged files are replaced and **can't be brought back**, so it asks first. Songs you dragged in can't be overwritten, only ones picked in the file browser.
+   - **New folder:** pick a spot in the same built-in file browser and click **[ SAVE HERE ]**. It makes a **Tagged Songs** folder there, with a subfolder for each album. Your originals stay untouched.
 
-The **☰** button next to the window buttons opens the options, where you can move the window buttons to the right (the clock and logo then swap to the left).
-
-Options at the bottom:
+Options at the bottom of the song list:
 
 - **FEAT. IN TITLE:** keeps "(feat. Someone)" in the song title.
 - **TRACK # IN FILENAME:** names files `05 - Song.mp3` instead of `Song.mp3`.
@@ -61,9 +60,10 @@ Options at the bottom:
 ### Good to know
 
 - **Singles:** if a song was only released as a single, its album is set to the single (e.g. _One Kiss - Single_), so it never ends up under "Unknown Album". If a song is on both an album and a single, it prefers the album.
-- **No match:** if it can't find a song, it leaves it out of the saved folder instead of saving it half-tagged. Try **[ EDIT ]** → search with the artist and title.
+- **No match:** if it can't find a song, it leaves that song alone when saving instead of saving it half-tagged (it's not overwritten either). Try **[ EDIT ]** → search with the artist and title.
 - **Unsupported formats:** `.m4a`, `.ogg` and `.wma` files aren't supported yet. They'll show up as UNSUPPORTED and get skipped.
-- **The numbers in the top-right box** are your average match confidence, songs tagged all-time, and minutes in this session.
+- **The numbers in the small box next to the logo** are your average match confidence, songs tagged all-time, and minutes in this session.
+- **The ☰ button** next to the window buttons opens the options. There you can move the window buttons to the right side, and the clock and logo swap over to the left.
 - **Change your username** by clicking `User:` in the bottom-left corner.
 
 ---
@@ -90,6 +90,6 @@ npm start        # run the app
 npm run dist     # build the .exe files into dist/
 ```
 
-Tagged copies are written to `%TEMP%\aperture-tunes` while the app runs. Your username is kept in `%APPDATA%\Aperture Tunes\profile.json`.
+Tagged copies are written to `%TEMP%\aperture-tunes` while the app runs. Your username and settings are kept in `%APPDATA%\Aperture Tunes\profile.json`.
 
 </details>
