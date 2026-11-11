@@ -1,7 +1,7 @@
 {
   "name": "aperture-tunes",
-  "version": "1.2.0",
-  "description": "Personal music tagger: identifies songs online and fixes tags, cover art and filenames",
+  "version": "2.0.0",
+  "description": "Portal-themed music player with a built-in tagger that fixes tags, cover art and filenames",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

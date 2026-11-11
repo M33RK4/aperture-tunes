@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>Aperture Tunes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="miniwin">
+  <div class="screen">
+    <div class="frame"></div>
+    <div class="mp">
+      <div class="art" id="mArt"><img alt=""></div>
+      <div class="info">
+        <div class="top">
+          <div class="txt"><div class="t" id="mTitle">Nothing playing</div><div class="s" id="mArtist"></div></div>
+          <div class="wb">
+            <button class="ib" id="mPin" title="Keep on top"><svg viewBox="0 0 10 10"><path d="M3 1h4L6.3 4 8 5.5H2L3.7 4zM5 5.5V9"/></svg></button>
+            <button class="ib" id="mOpen" title="Open Aperture Tunes"><svg viewBox="0 0 10 10"><path d="M5.5 1H9v3.5M9 1L5 5M4 9H1V6"/></svg></button>
+            <button class="ib" id="mClose" title="Quit"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
+          </div>
+        </div>
+        <div class="bot">
+          <button class="ib" id="mPrev" title="Previous"><svg viewBox="0 0 14 14"><path d="M3 2v10M12 2L5 7l7 5z"/></svg></button>
+          <button class="ib play" id="mPlay" title="Play"></button>
+          <button class="ib" id="mNext" title="Next"><svg viewBox="0 0 14 14"><path d="M11 2v10M2 2l7 5-7 5z"/></svg></button>
+          <span class="tm" id="mCur">0:00</span><div class="track" id="mSeek"><div class="fill"></div><div class="knob"></div></div><span class="tm" id="mDur">0:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="crt"></div>
+  <script src="mini.js"></script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import { parseFilename, cleanTitle, stripFeat, safeFilename } from './lib/clean.
 import { identify, unifyAlbums, fetchImage } from './lib/lookup.js';
 import { readExisting, writeTags, SUPPORTED } from './lib/tagger.js';
 import { roots, list, scan } from './lib/files.js';
+import { initLibrary, getLibrary, scanLibrary, pathForId, coverPath } from './lib/library.js';
 
 const ROOT = path.join(os.tmpdir(), 'aperture-tunes');
 const UPLOADS = path.join(ROOT, 'uploads');
@@ -35,6 +36,26 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/fs/roots', (req, res) => res.json(roots()));
+
+// the music library. main.js tells us where the windows music folder and the app data folder are
+const musicDir = () => process.env.APERTURE_MUSIC || roots().locations.find((l) => l.name === 'MUSIC')?.path || path.join(os.homedir(), 'Music');
+app.get('/api/lib', (req, res) => res.json({ ...getLibrary(), musicDir: musicDir() }));
+app.get('/api/lib/status', (req, res) => res.json(getLibrary().status));
+app.post('/api/lib/scan', (req, res) => {
+  const folders = Array.isArray(req.body.folders) && req.body.folders.length ? req.body.folders : [musicDir()];
+  scanLibrary(folders).catch(() => {});
+  res.json(getLibrary().status);
+});
+app.get('/api/audio/:id', (req, res) => {
+  const p = pathForId(req.params.id);
+  if (!p || !fs.existsSync(p)) return res.status(404).end();
+  res.sendFile(p, { dotfiles: 'allow', headers: { 'Cache-Control': 'no-store' } });
+});
+app.get('/api/cover/:name', (req, res) => {
+  const p = coverPath(req.params.name);
+  if (!p) return res.status(404).end();
+  res.sendFile(p, { headers: { 'Cache-Control': 'max-age=31536000' } });
+});
 
 app.get('/api/fs/list', (req, res) => {
   try {
@@ -161,7 +182,8 @@ app.post('/api/apply', async (req, res) => {
 // dropped files only exist as temp copies, so only files picked in the browser can be overwritten
 const isUpload = (f) => path.resolve(f.path).toLowerCase().startsWith(path.resolve(UPLOADS).toLowerCase() + path.sep);
 
-// mode "folder": copies Tagged Songs (with the album subfolders) into dir
+// mode "folder": puts a folder for each album straight into dir. if that album folder is already
+// there the songs go into it, and a song that already exists gets (2) on the end instead of replacing it
 // mode "overwrite": puts the tagged songs back where the originals were, renamed to the clean title
 app.post('/api/save', (req, res) => {
   const { mode, dir } = req.body;
@@ -169,13 +191,23 @@ app.post('/api/save', (req, res) => {
   try {
     if (mode === 'folder') {
       if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return res.status(400).json({ error: 'That folder does not exist' });
-      let dest = path.join(dir, 'Tagged Songs');
-      for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `Tagged Songs (${n})`);
-      fs.cpSync(OUTPUT, dest, { recursive: true });
-      return res.json({ path: dest });
+      const albums = [];
+      for (const album of fs.readdirSync(OUTPUT, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+        const dest = path.join(dir, album.name);
+        fs.mkdirSync(dest, { recursive: true });
+        for (const file of fs.readdirSync(path.join(OUTPUT, album.name))) {
+          const ext = path.extname(file), base = file.slice(0, -ext.length || undefined);
+          let target = path.join(dest, file);
+          for (let n = 2; fs.existsSync(target); n++) target = path.join(dest, `${base} (${n})${ext}`);
+          fs.copyFileSync(path.join(OUTPUT, album.name, file), target);
+        }
+        albums.push(album.name);
+      }
+      return res.json({ path: dir, albums });
     }
     if (mode === 'overwrite') {
       let written = 0, skipped = 0;
+      const moves = []; // so the player can fix playlists and the queue when a file gets renamed
       for (const f of files.values()) {
         if (!f.out || !fs.existsSync(f.out.dest)) continue;
         if (isUpload(f) || !fs.existsSync(f.path)) { skipped++; continue; }
@@ -186,12 +218,15 @@ app.post('/api/save', (req, res) => {
         // don't clobber a different song that already has this name
         for (let n = 2; target.toLowerCase() !== f.path.toLowerCase() && fs.existsSync(target); n++) target = path.join(folder, `${base} (${n})${ext}`);
         fs.copyFileSync(f.out.dest, target);
-        if (target.toLowerCase() !== f.path.toLowerCase()) fs.unlinkSync(f.path);
+        if (target.toLowerCase() !== f.path.toLowerCase()) {
+          fs.unlinkSync(f.path);
+          moves.push({ from: f.path, to: target });
+        }
         f.path = target;
         f.name = path.basename(target);
         written++;
       }
-      return res.json({ written, skipped });
+      return res.json({ written, skipped, moves });
     }
     res.status(400).json({ error: 'Unknown save mode' });
   } catch (e) {
@@ -208,6 +243,7 @@ app.post('/api/reset', (req, res) => {
 
 // port 0 = any free port, the window just loads whichever one we get
 export function startServer(port = 0) {
+  initLibrary(process.env.APERTURE_DATA || path.join(os.tmpdir(), 'aperture-tunes-data'));
   return new Promise((resolve) => {
     const srv = app.listen(port, '127.0.0.1', () => resolve(srv.address().port));
   });

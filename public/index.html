@@ -15,61 +15,181 @@
     <div class="dragbar"></div>
 
     <div class="winctl" id="winctl" hidden>
-      <button class="optbtn" id="btnOpts" title="Options"><svg viewBox="0 0 12 12"><path d="M1 3h10M1 6h10M1 9h10"/></svg></button>
       <button data-win="min" title="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5.5h8"/></svg></button>
       <button data-win="max" title="Maximize"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8"/></svg></button>
       <button data-win="close" title="Close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
     </div>
 
-    <div class="opts-menu" id="optsMenu" hidden>
-      <div class="t">OPTIONS</div>
-      <div class="o">
-        <div>WINDOW BUTTONS</div>
-        <div class="seg"><button class="cmd" data-side="left">[ LEFT ]</button><button class="cmd" data-side="right">[ RIGHT ]</button></div>
-      </div>
-    </div>
+    <div class="topmark"><img src="wordmark.svg" alt="Aperture Tunes" draggable="false"></div>
 
     <div class="hud">
       <div class="clock"><div id="time">--:--</div><div id="date">--/--/----</div></div>
       <div class="box matrix"><canvas id="matrix"></canvas></div>
       <div class="box stats" title="">
-        <div id="st1" title="Average match confidence">-.--</div>
-        <div id="st2" title="Songs tagged, all time">0</div>
-        <div id="st3" title="Session time (minutes)">0.0</div>
+        <div id="st1" title="Listened today">0M</div>
+        <div id="st2" title="Songs played today">0</div>
+        <div id="st3" title="Listened all-time">0M</div>
       </div>
       <div class="box mini"><div class="logo spin"></div></div>
     </div>
 
-    <section class="home" id="home">
-      <div class="glow"><div class="logo big"></div></div>
-      <div class="wordmark">APERTURE</div>
-      <div class="tagline">TUNES</div>
-      <button class="prompt" id="btnBrowse">&gt; DROP AUDIO FILES OR <u>CLICK TO BROWSE</u><span class="cursor">_</span></button>
+    <nav class="side panelbox" id="side">
+      <div class="h">PLAYER</div>
+      <div class="nav" data-view="np">NOW PLAYING</div>
+      <div class="nav" data-view="lib">LIBRARY <span class="n" id="nLib"></span></div>
+      <div class="nav" data-view="queue">QUEUE <span class="n" id="nQueue"></span></div>
+      <div class="nav" data-view="eq">EQUALIZER <span class="n" id="nEq"></span></div>
+      <div class="nav" data-view="stats">STATISTICS</div>
+      <div class="nav" data-view="pl">PLAYLISTS <span class="n" id="nPl"></span></div>
+      <div id="navPl"></div>
+      <div class="grow"></div>
+      <div class="tagger"><div class="h">TOOLS</div>
+        <div class="nav warn" data-view="needs" id="navNeeds" hidden>NEEDS TAGGING <span class="n" id="nNeeds"></span></div>
+        <div class="nav" data-view="tag">TAGGER</div>
+      </div>
+      <div class="optrow" id="btnOpts" title="Options"><svg class="gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4"/><circle cx="8" cy="8" r="5"/><path d="M8 .8v2.4M8 12.8v2.4M.8 8h2.4M12.8 8h2.4M2.9 2.9l1.7 1.7M11.4 11.4l1.7 1.7M2.9 13.1l1.7-1.7M11.4 4.6l1.7-1.7"/></svg><span>OPTIONS</span></div>
+      <div class="who" id="user" title="Click to change user">User: <span id="username">—</span></div>
+    </nav>
+
+    <section class="main panelbox" id="main">
+      <!-- now playing -->
+      <div class="view" data-view="np">
+        <div class="ptitle"><span>APERTURE TUNES // NOW PLAYING</span></div>
+        <div class="npwrap" id="npBody"></div>
+      </div>
+
+      <!-- library, also used for the "needs tagging" list -->
+      <div class="view" data-view="lib">
+        <div class="ptitle"><span id="libTitle">APERTURE TUNES // MUSIC LIBRARY</span><div class="tabs" id="libTabs">
+          <button class="tab" data-tab="albums">ALBUMS</button><button class="tab" data-tab="artists">ARTISTS</button><button class="tab" data-tab="genres">GENRES</button><button class="tab" data-tab="songs">ALL SONGS</button>
+          <span class="tabsep" id="libModeSep"></span><button class="tab" data-mode="list" id="libList">[ LIST ]</button><button class="tab" data-mode="grid" id="libGridBtn">[ GRID ]</button>
+        </div></div>
+        <div class="tool"><div class="search"><span class="gt">&gt; SEARCH:</span><input id="libSearch" spellcheck="false" autocomplete="off"></div><span class="count" id="libCount"></span></div>
+        <div class="pbody">
+          <div class="groups" id="libGroups"></div>
+          <div class="plist" id="libSongs"></div>
+          <div class="grid" id="libGrid" hidden></div>
+        </div>
+        <div class="pfoot"><span class="info" id="libInfo"></span>
+          <button class="cmd" id="libSelAll">[ SELECT ALL ]</button>
+          <button class="cmd" id="libToTagger" hidden>[ SEND TO TAGGER ]</button>
+          <button class="cmd" id="libPlay">[ PLAY NOW ]</button>
+          <button class="cmd hot" id="libQueue">[ ADD TO QUEUE ]</button>
+        </div>
+      </div>
+
+      <div class="view" data-view="album">
+        <div class="ptitle"><span>APERTURE TUNES // MUSIC LIBRARY // ALBUM</span><button class="cmd" id="albBack">[ &lt; BACK ]</button></div>
+        <div class="albumhead"><div class="art" id="albArt"><img alt=""></div><div class="meta">
+          <div class="k">ALBUM</div><div class="big" id="albTitle"></div><div class="mid" id="albArtist"></div><div class="k" id="albInfo"></div>
+          <div class="acts"><button class="cmd hot" id="albPlay">[ PLAY ALBUM ]</button><button class="cmd" id="albQueue">[ ADD TO QUEUE ]</button><button class="cmd" id="albShuffle">[ SHUFFLE ]</button></div>
+        </div></div>
+        <div class="plist" id="albSongs"></div>
+        <div class="pfoot"><span class="info" id="albSel"></span><button class="cmd" id="albSelPlay">[ PLAY NOW ]</button><button class="cmd" id="albSelQueue">[ ADD TO QUEUE ]</button></div>
+      </div>
+
+      <div class="view" data-view="queue">
+        <div class="ptitle"><span>APERTURE TUNES // PLAYBACK QUEUE</span><span class="count" id="queueCount"></span></div>
+        <div class="plist" id="queueList"></div>
+        <div class="pfoot"><span class="info dim">DRAG &#8801; TO REORDER // DOUBLE-CLICK TO PLAY</span><button class="cmd" id="queueClear">[ CLEAR QUEUE ]</button><button class="cmd hot" id="queueSave">[ SAVE AS PLAYLIST ]</button></div>
+      </div>
+
+      <div class="view" data-view="pl">
+        <div class="ptitle"><span>APERTURE TUNES // PLAYLISTS</span></div>
+        <div class="pbody"><div class="groups" id="plList"></div><div class="plist" id="plSongs"></div></div>
+        <div class="pfoot"><span class="info" id="plInfo"></span><button class="cmd" id="plRename">[ RENAME ]</button><button class="cmd" id="plDelete">[ DELETE ]</button><button class="cmd hot" id="plPlay">[ PLAY PLAYLIST ]</button></div>
+      </div>
+
+      <div class="view" data-view="eq">
+        <div class="ptitle"><span>APERTURE TUNES // EQUALIZER</span><div class="tabs" id="eqTabs">
+          <button class="tab" data-page="1">1 // BANDS</button><button class="tab" data-page="2">2 // EFFECTS</button>
+        </div></div>
+        <div class="eqpage" id="eqPage1">
+          <div class="tool eqtool"><span class="lbl">EQUALIZER</span><div class="seg2" id="eqPower"><button class="cmd" data-on="1">[ ON ]</button><button class="cmd" data-on="0">[ OFF ]</button></div>
+            <span class="lbl" style="margin-left:18px">BANDS</span><div class="seg2" id="eqCount"></div></div>
+          <div class="eq" id="eqBands"></div>
+          <div class="pfoot"><span class="info dim" id="eqInfo"></span><button class="cmd" id="eqFlat">[ RESET TO FLAT ]</button></div>
+        </div>
+        <div class="eqpage" id="eqPage2" hidden>
+          <div class="fx">
+            <div class="knobs">
+              <div class="kbox"><div class="kt">BASS BOOST</div><div class="dialwrap" id="dBass"></div><div class="kv" id="vBass"></div></div>
+              <div class="kbox"><div class="kt">SURROUND</div><div class="dialwrap" id="dSurround"></div><div class="kv" id="vSurround"></div></div>
+              <div class="kbox"><div class="kt">CHANNEL BALANCE</div><div class="dialwrap" id="dBalance"></div><div class="kv" id="vBalance"></div>
+                <div class="seg2 mini" id="eqMono"><button class="cmd" data-mono="0">[ STEREO ]</button><button class="cmd" data-mono="1">[ MONO ]</button></div></div>
+            </div>
+            <div class="fxrow"><div class="k">VOLUME</div><div class="slider"><div class="track" id="fxVol"><div class="fill"></div><div class="knob"></div></div><span class="num" id="fxVolNum"></span></div></div>
+            <div class="fxrow"><div class="k">PREAMP</div><div>
+              <div class="seg2" id="eqPre"><button class="cmd" data-pre="off">[ OFF // 0 dB ]</button><button class="cmd" data-pre="headroom">[ HEADROOM // -6 dB ]</button><button class="cmd" data-pre="boost">[ BOOST // +2 dB ]</button></div>
+              <div class="slider" style="margin-top:10px"><div class="track" id="fxPre"><div class="fill"></div><div class="knob"></div></div><span class="num" id="fxPreNum"></span><span class="hint" id="fxPreHint"></span></div></div></div>
+          </div>
+          <div class="pfoot"><span class="info dim">DRAG A DIAL UP OR DOWN // DOUBLE-CLICK TO RESET IT</span><button class="cmd" id="fxReset">[ RESET EFFECTS ]</button></div>
+        </div>
+      </div>
+
+      <div class="view" data-view="stats">
+        <div class="ptitle"><span>APERTURE TUNES // LISTENING STATISTICS</span><div class="tabs" id="statTabs">
+          <button class="tab" data-days="7">7 DAYS</button><button class="tab" data-days="30">30 DAYS</button><button class="tab" data-days="0">ALL TIME</button>
+        </div></div>
+        <div class="stats-body" id="statsBody"></div>
+      </div>
+
+      <div class="view" data-view="opts">
+        <div class="ptitle"><span>APERTURE TUNES // OPTIONS</span><button class="cmd" id="optClose">[ X ]</button></div>
+        <div class="optlist">
+          <div class="opt"><div class="k">MUSIC FOLDERS<small>Everything in these folders shows up in your library.</small></div><div class="folders">
+            <div id="optFolders"></div>
+            <div class="seg2" style="margin-top:6px"><button class="cmd" id="optAddFolder">[ ADD FOLDER ]</button><button class="cmd" id="optRescan">[ RESCAN LIBRARY ]</button></div></div></div>
+          <div class="opt"><div class="k">NOW PLAYING DISPLAY<small>What the big panel on the NOW PLAYING screen shows.</small></div><div class="seg2" id="optNp"><button class="cmd" data-np="art">[ ALBUM ART ]</button><button class="cmd" data-np="scope">[ OSCILLOSCOPE ]</button><button class="cmd" data-np="aperture">[ APERTURE ]</button><button class="cmd" data-np="cassette">[ CASSETTE ]</button></div></div>
+          <div class="opt"><div class="k">CROSSFADE<small>Fades one song into the next.</small></div><div class="slider"><div class="track" id="optFade"><div class="fill"></div><div class="knob"></div></div><span id="optFadeNum"></span></div></div>
+          <div class="opt"><div class="k">WHEN CLOSING THE WINDOW</div><div class="seg2" id="optClosing"><button class="cmd" data-close="quit">[ QUIT ]</button><button class="cmd" data-close="tray">[ KEEP PLAYING IN TRAY ]</button><button class="cmd" data-close="mini">[ OPEN MINI PLAYER ]</button></div></div>
+          <div class="opt"><div class="k">COVER ART COLOURS<small>Hovering a cover always shows its real colours.</small></div><div class="seg2" id="optTint"><button class="cmd" data-tint="1">[ AMBER TINT ]</button><button class="cmd" data-tint="0">[ ORIGINAL COLOURS ]</button></div></div>
+          <div class="opt"><div class="k">WINDOW BUTTONS</div><div class="seg2"><button class="cmd" data-side="left">[ LEFT ]</button><button class="cmd" data-side="right">[ RIGHT ]</button></div></div>
+        </div>
+      </div>
+
+      <!-- the tagger, now a tool in its own tab -->
+      <div class="view" data-view="tag">
+        <div class="ptitle"><span>APERTURE TUNES // METADATA ENRICHMENT CENTER</span><span class="chamber">TEST CHAMBER <b id="chamber">01</b></span></div>
+        <div class="tagdrop" id="tagEmpty"><div><div class="glow"><div class="logo"></div></div>
+          <button class="prompt" id="btnBrowse">&gt; DROP AUDIO FILES OR <u>CLICK TO BROWSE</u><span class="cursor">_</span></button>
+          <div class="dim">Finds the right title, artist, album, cover, track number, year and genre online.</div>
+          <div class="dim" id="tagNeedsHint" hidden></div></div></div>
+        <div class="tagwork" id="work" hidden>
+          <div class="status"><span class="gt">&gt;</span> <span id="status"></span><span class="cursor">_</span></div>
+          <div class="progress"><div class="bar" id="bar"></div></div>
+          <ul class="list" id="list"></ul>
+          <div class="opts">
+            <span id="counts"></span>
+            <label class="check"><input type="checkbox" id="optFeat"><span></span>FEAT. IN TITLE</label>
+            <label class="check"><input type="checkbox" id="optPrefix"><span></span>TRACK # IN FILENAME</label>
+          </div>
+        </div>
+        <div class="pfoot" id="cmds">
+          <span class="info dim" id="tagInfo"></span>
+          <button class="cmd" id="btnAdd">[ ADD ]</button>
+          <button class="cmd" id="btnScan">[ SCAN ]</button>
+          <button class="cmd hot" id="btnApply">[ APPLY ]</button>
+          <button class="cmd hot" id="btnSave" hidden>[ SAVE ]</button>
+          <button class="cmd" id="btnOpen" hidden>[ OPEN ]</button>
+          <button class="cmd" id="btnReset">[ CLEAR ]</button>
+        </div>
+      </div>
     </section>
 
-    <section class="work" id="work" hidden>
-      <div class="workhead">
-        <div class="mark"><div class="glow sm"><div class="logo"></div></div><span>APERTURE</span><em>TUNES</em></div>
-        <div class="chamber">TEST CHAMBER <b id="chamber">01</b></div>
+    <div class="pbar panelbox" id="pbar">
+      <div class="now" id="pbNow" title="Now playing"><div class="art"><img alt=""></div><div class="txt"><div class="t" id="pbTitle">Nothing playing</div><div class="s" id="pbSub">Pick something in the library</div></div></div>
+      <div class="mid">
+        <div class="ctl">
+          <button class="ib" id="pbShuffle" title="Shuffle"><svg viewBox="0 0 14 14"><path d="M1 4h3l6 6h3M1 10h3l2-2M8 6l2-2h3M11 2l2 2-2 2M11 8l2 2-2 2"/></svg></button>
+          <button class="ib" id="pbPrev" title="Previous"><svg viewBox="0 0 14 14"><path d="M3 2v10M12 2L5 7l7 5z"/></svg></button>
+          <button class="ib play" id="pbPlay" title="Play"><svg viewBox="0 0 14 14"><path d="M3 1.5l9.5 5.5L3 12.5z"/></svg></button>
+          <button class="ib" id="pbNext" title="Next"><svg viewBox="0 0 14 14"><path d="M11 2v10M2 2l7 5-7 5z"/></svg></button>
+          <button class="ib" id="pbRepeat" title="Repeat"><svg viewBox="0 0 14 14"><path d="M2 7V4h9M9 2l2 2-2 2M12 7v3H3M5 12l-2-2 2-2"/></svg><b class="one">1</b></button>
+        </div>
+        <div class="seek"><span id="pbCur">0:00</span><div class="track" id="pbSeek"><div class="fill"></div><div class="knob"></div></div><span id="pbDur">0:00</span></div>
       </div>
-      <div class="status"><span class="gt">&gt;</span> <span id="status"></span><span class="cursor">_</span></div>
-      <div class="progress"><div class="bar" id="bar"></div></div>
-      <ul class="list" id="list"></ul>
-      <div class="opts">
-        <span id="counts"></span>
-        <label class="check"><input type="checkbox" id="optFeat"><span></span>FEAT. IN TITLE</label>
-        <label class="check"><input type="checkbox" id="optPrefix"><span></span>TRACK # IN FILENAME</label>
-      </div>
-    </section>
-
-    <div class="user" id="user" title="Click to change user">User: <span id="username">—</span></div>
-    <div class="cmds" id="cmds" hidden>
-      <button class="cmd" id="btnAdd">[ ADD ]</button>
-      <button class="cmd" id="btnScan">[ TEST ]</button>
-      <button class="cmd hot" id="btnApply">[ APPLY ]</button>
-      <button class="cmd hot" id="btnSave" hidden>[ SAVE ]</button>
-      <button class="cmd" id="btnOpen" hidden>[ OPEN ]</button>
-      <button class="cmd" id="btnReset">[ CLEAR ]</button>
+      <div class="vol"><button class="ib eqb" id="pbEq" title="Equalizer">EQ</button><button class="ib" id="pbMute" title="Mute"><svg viewBox="0 0 14 14"><path d="M2 5h3l3-3v10l-3-3H2zM10 4.5a3.5 3.5 0 010 5M11.5 3a5.5 5.5 0 010 8"/></svg></button><div class="track" id="pbVol"><div class="fill"></div><div class="knob"></div></div></div>
     </div>
 
     <div class="fb" id="fb" hidden>
@@ -108,7 +228,7 @@
         <div class="b" id="saveChoose">
           <div id="saveHead"></div>
           <button class="choice" id="saveOverwrite"><b>[ OVERWRITE ORIGINALS ]</b><span>Puts the tagged songs back where you picked them from, renamed to the clean title. The old untagged files are replaced.</span></button>
-          <button class="choice" id="saveNew"><b>[ NEW FOLDER ]</b><span>Makes a "Tagged Songs" folder with a subfolder for each album. Your original files stay untouched.</span></button>
+          <button class="choice" id="saveNew"><b>[ NEW FOLDER ]</b><span>Makes a folder for each album inside the folder you pick, named after the album. Your original files stay untouched.</span></button>
           <div class="act"><button class="cmd" id="saveCancel">[ CANCEL ]</button></div>
         </div>
         <div class="b" id="saveConfirm" hidden>
@@ -117,6 +237,18 @@
           <div class="act"><button class="cmd" id="saveBack">[ BACK ]</button><button class="cmd hot" id="saveYes">[ YES, OVERWRITE ]</button></div>
         </div>
       </div>
+    </div>
+
+    <!-- small yes/no and type-a-name popups -->
+    <div class="dlg" id="askDlg" hidden>
+      <form class="dlgbox" id="askForm">
+        <div class="t" id="askTitle"></div>
+        <div class="b">
+          <div id="askText"></div>
+          <input class="askin" id="askInput" maxlength="60" spellcheck="false" autocomplete="off">
+          <div class="act"><button type="button" class="cmd" id="askNo">[ CANCEL ]</button><button type="submit" class="cmd hot" id="askYes">[ OK ]</button></div>
+        </div>
+      </form>
     </div>
 
     <div class="login" id="login" hidden>
@@ -165,5 +297,12 @@
   </template>
 
   <script src="app.js"></script>
+  <script src="player.js"></script>
+  <script src="library.js"></script>
+  <script src="nowplaying.js"></script>
+  <script src="eq.js"></script>
+  <script src="tagger.js"></script>
+  <script src="stats.js"></script>
+  <script src="menu.js"></script>
 </body>
 </html>
