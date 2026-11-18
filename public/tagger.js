@@ -11,6 +11,11 @@ const QUIPS = {
 };
 
 function say(msg) { $('#status').textContent = msg; }
+// the top number in the HUD: how sure the tagger was on average
+function updateStats() {
+  const scores = items.map((it) => it.candidates[it.sel]?.score).filter((s) => s != null);
+  $('#st1').textContent = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : '-.--';
+}
 function setStep(n) { $('#chamber').textContent = String(n).padStart(2, '0'); }
 
 
@@ -210,8 +215,7 @@ $('#fbFolder').addEventListener('click', async () => {
 ['#fbClose', '#fbCancel'].forEach((s) => $(s).addEventListener('click', closeBrowser));
 document.addEventListener('keydown', (e) => {
   if ($('#fb').hidden || e.target === $('#fbPath')) return;
-  if (e.key === 'Escape') closeBrowser();
-  else if (e.key === 'Backspace' && fb.parent) fbGo(fb.parent);
+  if (e.key === 'Backspace' && fb.parent) fbGo(fb.parent);
   else if (e.key === 'Enter' && fb.pick) $('#fbSaveHere').click();
   else if (e.key === 'Enter' && fb.selected.size) $('#fbLoad').click();
 });
@@ -395,6 +399,7 @@ function updateCounts() {
   const sel = items.filter((it) => it.include && it.meta).length;
   const unsup = items.filter((it) => it.state === 'unsupported').length;
   $('#counts').textContent = `${items.length} SPECIMENS // ${sel} SELECTED${unsup ? ` // ${unsup} UNSUPPORTED` : ''}`;
+  updateStats();
   updateButtons();
 }
 function updateButtons() {
@@ -526,6 +531,7 @@ $('#btnReset').addEventListener('click', async () => {
   showExtract(false);
   showWork(false);
   setStep(1);
+  updateStats();
 });
 
 

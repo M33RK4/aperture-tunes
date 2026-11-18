@@ -20,6 +20,7 @@ let fading = null;
 let ac = null;
 const node = {};
 const deckGain = [];
+const normGain = []; // each deck's same-loudness level (loudness.js)
 let eqFilters = [];
 
 function buildGraph() {
@@ -27,9 +28,12 @@ function buildGraph() {
   decks.forEach((el, i) => {
     el.preload = 'auto';
     const src = ac.createMediaElementSource(el);
+    const norm = ac.createGain();
     const g = ac.createGain();
     g.gain.value = i === A ? 1 : 0;
-    src.connect(g);
+    src.connect(norm);
+    norm.connect(g);
+    normGain[i] = norm;
     deckGain[i] = g;
   });
   node.pre = ac.createGain();
@@ -51,7 +55,7 @@ function buildGraph() {
   node.merge.connect(node.pan);
   node.analyser = ac.createAnalyser();
   node.analyser.fftSize = 2048;
-  node.analyser.smoothingTimeConstant = 0.75;
+  node.analyser.smoothingTimeConstant = 0.5;
   node.pan.connect(node.analyser);
   // left and right on their own, for the cassette's VU meters
   node.chSplit = ac.createChannelSplitter(2);
@@ -62,7 +66,10 @@ function buildGraph() {
   node.chSplit.connect(node.anL, 0);
   node.chSplit.connect(node.anR, 1);
   node.vol = ac.createGain();
-  node.analyser.connect(node.vol);
+  // the sleep timer's fade-out (sleep.js), separate from your volume
+  node.fade = ac.createGain();
+  node.analyser.connect(node.fade);
+  node.fade.connect(node.vol);
   node.vol.connect(ac.destination);
   rewireEq();
   applyFx();
@@ -174,6 +181,7 @@ let skipGuard = 0;
 let errorStreak = 0;
 function load(u, { play = true, at = 0 } = {}) {
   stopFade();
+  dropHandoff();
   const it = itemOf(u);
   P.cur = it ? u : null;
   const el = decks[A];
@@ -193,7 +201,8 @@ function load(u, { play = true, at = 0 } = {}) {
   }
   skipGuard = 0;
   el.src = src;
-  el.loop = P.repeat === 'one';
+  loudApply(A, it.path);
+  el.loop = P.repeat === 'one' && !sleepUntilSongEnds();
   if (at) el.addEventListener('loadedmetadata', () => { el.currentTime = Math.min(at, (el.duration || at) - 1); }, { once: true });
   played.u = u; played.t = 0; played.counted = false; played.last = at;
   if (play) start(el);
@@ -212,6 +221,7 @@ function togglePlay() {
   }
   if (P.playing) {
     stopFade();
+    pauseHandoff();
     el.pause();
     P.playing = false;
     changed();
@@ -235,13 +245,83 @@ function playPrev() {
 }
 function seekTo(frac) {
   const el = decks[A];
-  if (el.duration) { stopFade(); el.currentTime = frac * el.duration; }
+  if (el.duration) { stopFade(); pauseHandoff(); el.currentTime = frac * el.duration; }
+}
+
+// gapless: whenever one song doesn't fade into the next (crossfade off, or a crossfade exception), the next one
+// gets loaded on the other deck a few seconds early and started the moment this one ends, so there's no gap.
+// crossfade exceptions are songs that should run straight into each other even with crossfade on
+function noFade(curPath, nextPath) {
+  if (!curPath || !nextPath) return false;
+  const lc = (p) => p.toLowerCase();
+  if ((profile.xfPairs || []).some((x) => lc(x.a) === lc(curPath) && lc(x.b) === lc(nextPath))) return true;
+  if (!profile.xfAlbum) return false;
+  // "an album in order": the next track number on the same album (or track 1 of the next disc)
+  const a = libSong(curPath), b = libSong(nextPath);
+  if (!a || !b || albumKey(a) !== albumKey(b) || !a.track || !b.track) return false;
+  const da = a.disc || 1, db = b.disc || 1;
+  return db === da ? b.track === a.track + 1 : db === da + 1 && b.track === 1;
+}
+let handoff = null; // { u, timer } the song waiting on the other deck
+function dropHandoff() {
+  if (!handoff) return;
+  clearTimeout(handoff.timer);
+  handoff = null;
+}
+function pauseHandoff() {
+  if (handoff) { clearTimeout(handoff.timer); handoff.timer = 0; }
+}
+function maybeHandoff(el) {
+  if (!ac || fading || P.repeat === 'one' || !P.playing || !el.duration || sleepUntilSongEnds()) return false;
+  const left = el.duration - el.currentTime;
+  if (left > 4) return false;
+  const n = nextU();
+  const it = itemOf(n), cur = currentItem();
+  // (songs too short to crossfade don't fade either, see maybeFade)
+  const fades = profile.crossfade > 0 && el.duration >= profile.crossfade * 3;
+  if (!it || !cur || (fades && !noFade(cur.path, it.path))) return false;
+  const src = deckSrc(it.path);
+  if (!src) return false;
+  if (!handoff || handoff.u !== n) {
+    dropHandoff();
+    const other = decks[1 - A];
+    other.src = src;
+    loudApply(1 - A, it.path);
+    other.loop = false;
+    other.load();
+    handoff = { u: n, timer: 0 };
+  }
+  if (left < 0.7 && !handoff.timer) handoff.timer = setTimeout(doHandoff, Math.max(0, left * 1000 - 25));
+  return true;
+}
+function doHandoff() {
+  const h = handoff;
+  handoff = null;
+  if (!h || nextU() !== h.u) return;
+  clearTimeout(h.timer);
+  // the next file couldn't even be loaded (broken, or a kind the player can't do): go the normal way,
+  // which notices the error and skips on to the one after it
+  if (decks[1 - A].error) return load(h.u);
+  const old = A;
+  A = 1 - A;
+  const nel = decks[A];
+  const t = ac.currentTime;
+  deckGain[A].gain.cancelScheduledValues(t);
+  deckGain[A].gain.setValueAtTime(1, t);
+  deckGain[old].gain.cancelScheduledValues(t);
+  deckGain[old].gain.setValueAtTime(deckGain[old].gain.value, t);
+  deckGain[old].gain.linearRampToValueAtTime(0, t + 0.04);
+  setTimeout(() => decks[old].pause(), 120);
+  P.cur = h.u;
+  played.u = h.u; played.t = 0; played.counted = false; played.last = 0;
+  nel.play().catch(() => {});
+  changed(true);
 }
 
 // crossfade: when the current song is nearly done, start the next one on the other deck and swap volumes
 function maybeFade(el) {
   const sec = profile.crossfade || 0;
-  if (!sec || fading || P.repeat === 'one' || !P.playing || !el.duration || el.duration < sec * 3) return;
+  if (!sec || fading || P.repeat === 'one' || !P.playing || !el.duration || el.duration < sec * 3 || sleepUntilSongEnds()) return;
   if (el.duration - el.currentTime > sec) return;
   const n = nextU();
   const it = itemOf(n);
@@ -251,6 +331,7 @@ function maybeFade(el) {
   A = 1 - A;
   const nel = decks[A];
   nel.src = src;
+  loudApply(A, it.path);
   nel.loop = false;
   const t = ac.currentTime;
   deckGain[A].gain.cancelScheduledValues(t);
@@ -290,11 +371,15 @@ decks.forEach((el, i) => {
   el.addEventListener('timeupdate', () => {
     if (i !== A) return;
     countPlay(el);
-    maybeFade(el);
+    if (!maybeHandoff(el)) maybeFade(el);
     drawSeek();
   });
   el.addEventListener('ended', () => {
     if (i !== A || fading) return;
+    // the sleep timer was set to the end of this song
+    if (sleepUntilSongEnds()) return sleepStop(true);
+    // the timer for the gapless hand-off was a little late, go now
+    if (handoff && handoff.u === nextU()) return doHandoff();
     const n = nextU();
     if (n) load(n);
     else { P.playing = false; changed(); }
@@ -366,7 +451,7 @@ function toggleShuffle() {
 }
 function cycleRepeat() {
   P.repeat = P.repeat === 'off' ? 'all' : P.repeat === 'all' ? 'one' : 'off';
-  decks[A].loop = P.repeat === 'one';
+  decks[A].loop = P.repeat === 'one' && !sleepUntilSongEnds();
   changed();
 }
 function setVolume(v) {
@@ -383,7 +468,8 @@ function followMoves(moves) {
   const fix = (p) => map.get(p.toLowerCase()) || p;
   P.queue.forEach((q) => (q.path = fix(q.path)));
   const playlists = (profile.playlists || []).map((pl) => ({ ...pl, paths: pl.paths.map(fix) }));
-  saveProfile({ playlists });
+  const xfPairs = (profile.xfPairs || []).map((x) => ({ a: fix(x.a), b: fix(x.b) }));
+  saveProfile({ playlists, xfPairs });
   statsMove(fix);
   changed();
 }
@@ -394,7 +480,12 @@ function changed(track = false) {
   drawBar();
   document.dispatchEvent(new CustomEvent('player', { detail: { track } }));
   sendMini();
-  if (track) updateMediaSession();
+  if (track) {
+    updateMediaSession();
+    // measure the next song's loudness now, so it's ready when it starts
+    const n = itemOf(nextU());
+    if (n && loudOn()) loudMeasure(n.path);
+  }
   clearTimeout(saveQueueTimer);
   saveQueueTimer = setTimeout(saveQueue, 500);
 }
@@ -443,6 +534,7 @@ function sendMini() {
     cur: el.currentTime || 0,
     dur: el.duration || s?.duration || 0,
     tint: profile.tint !== false,
+    theme: profile.theme || 'amber',
   });
 }
 setInterval(() => { if (P.playing) sendMini(); }, 1000);
@@ -486,8 +578,9 @@ function drawSeek() {
 }
 function drawBar() {
   const s = currentSong();
-  $('#pbTitle').textContent = s ? s.title || fallbackSong(s.path).title : 'Nothing playing';
-  $('#pbSub').textContent = s ? [s.artist, s.album].filter(Boolean).join(' // ') : 'Pick something in the library';
+  // a new song types itself in over the old one
+  typeText($('#pbTitle'), s ? s.title || fallbackSong(s.path).title : 'Nothing playing');
+  typeText($('#pbSub'), s ? [s.artist, s.album].filter(Boolean).join(' // ') : 'Pick something in the library');
   setCover($('#pbNow .art img'), s);
   $('#pbPlay').innerHTML = P.playing ? ICON_PAUSE : ICON_PLAY;
   $('#pbPlay').title = P.playing ? 'Pause' : 'Play';
@@ -514,7 +607,7 @@ $('#pbMute').addEventListener('click', () => {
   saveProfile({ muted: P.muted });
 });
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest('input, textarea, select') || !$('#fb').hidden || !$('#askDlg').hidden || !$('#login').hidden) return;
+  if (e.target.closest?.('input, textarea, select') || !$('#fb').hidden || !$('#askDlg').hidden || !$('#login').hidden) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   else if (e.ctrlKey && e.key === 'ArrowRight') playNext();
   else if (e.ctrlKey && e.key === 'ArrowLeft') playPrev();

@@ -48,7 +48,7 @@ async function initStats() {
     saveProfile({ plays: undefined });
   }
   ST.days = profile.statDays ?? 0;
-  drawHud();
+  ST.report = !!profile.statReport;
 }
 
 const songRec = (p) => (ST.data.songs[keyOf(p)] ||= { n: 0, sec: 0, first: 0, last: 0, skips: 0, log: [] });
@@ -70,7 +70,7 @@ function statsListen(p, sec) {
   s.last = now;
   if (s.sec > ST.data.longest.sec) ST.data.longest = { sec: s.sec, start: s.start };
   ST.dirty = true;
-  drawHudSoon();
+  statsChanged();
 }
 function statsPlay(p) {
   if (!ST.data) return;
@@ -84,7 +84,7 @@ function statsPlay(p) {
   dayRec().n++;
   ST.data.plays++;
   ST.dirty = true;
-  drawHud();
+  statsChanged();
 }
 function statsSkip(p) {
   if (!ST.data) return;
@@ -107,19 +107,11 @@ function statsMove(fix) {
   statsSave();
 }
 
-// ---- the three numbers in the top right: today, songs today, all-time ----
-let hudTimer = null;
-function drawHudSoon() { if (!hudTimer) hudTimer = setTimeout(() => { hudTimer = null; drawHud(); }, 2000); }
-function drawHud() {
-  if (!ST.data) return;
-  const today = ST.data.days[dayKey()] || { sec: 0, n: 0 };
-  const m = Math.floor(today.sec / 60);
-  $('#st1').textContent = m >= 60 ? `${(m / 60).toFixed(1)}H` : `${m}M`;
-  $('#st2').textContent = today.n;
-  const h = ST.data.total / 3600;
-  $('#st3').textContent = h >= 1 ? `${Math.floor(h)}H` : `${Math.floor(ST.data.total / 60)}M`;
-  // keeps the statistics screen live while you're looking at it
-  if (view === 'stats') renderStatsSoon();
+// keeps the statistics screen live while you're looking at it (at most every 2 seconds)
+let liveTimer = null;
+function statsChanged() {
+  if (view !== 'stats' || liveTimer) return;
+  liveTimer = setTimeout(() => { liveTimer = null; if (view === 'stats') renderStats(); }, 2000);
 }
 
 // ---- statistics screen ----
@@ -159,10 +151,10 @@ function topList(per, groupKey, label, extra) {
   return list.map((e, i) => `<div class="srow"><span class="rk">${i + 1}</span>${extra ? extra(e) : ''}<div class="sname"><div class="t" title="${esc(e.label)}">${esc(e.label)}</div>
     <div class="sbar"><i style="width:${((e.sec || e.n) / max) * 100}%"></i></div></div><span class="sv">${e.sec ? fmtHours(e.sec) : '--'}<small>${plural(e.n, 'PLAY').toUpperCase()}</small></span></div>`).join('');
 }
-let statsTimer = null;
-function renderStatsSoon() { clearTimeout(statsTimer); statsTimer = setTimeout(renderStats, 300); }
 function renderStats() {
-  $$('#statTabs [data-days]').forEach((b) => b.classList.toggle('on', +b.dataset.days === ST.days));
+  $$('#statTabs [data-days]').forEach((b) => b.classList.toggle('on', !ST.report && +b.dataset.days === ST.days));
+  $('#statTabs [data-report]').classList.toggle('on', !!ST.report);
+  if (ST.report) return renderReport();
   const D = ST.data;
   if (!D.plays && !D.total) {
     $('#statsBody').innerHTML = '<div class="empty big">&gt; No listening history yet. Play some music and come back.</div>';
@@ -195,9 +187,15 @@ function renderStats() {
 }
 $$('#statTabs [data-days]').forEach((b) => b.addEventListener('click', () => {
   ST.days = +b.dataset.days;
-  saveProfile({ statDays: ST.days });
+  ST.report = false;
+  saveProfile({ statDays: ST.days, statReport: false });
   renderStats();
 }));
+$('#statTabs [data-report]').addEventListener('click', () => {
+  ST.report = true;
+  saveProfile({ statReport: true });
+  renderStats();
+});
 document.addEventListener('view', (e) => { if (e.detail === 'stats') renderStats(); });
 
 // ---- popups for one song or one album ----
@@ -213,7 +211,7 @@ function weekBars(logs) {
 }
 function statPopup(cover, title, sub, cells, logs, tagPaths) {
   $('#statDlg')?.remove();
-  screen.insertAdjacentHTML('beforeend', `<div class="dlg" id="statDlg"><div class="dlgbox wide">
+  screen.insertAdjacentHTML('beforeend', `<div class="dlg pop" id="statDlg"><div class="dlgbox wide">
     <div class="t">APERTURE TUNES // SPECIMEN STATISTICS</div>
     <div class="b"><div class="sshead">${artImg(cover, 'big')}<div style="min-width:0">
       <div class="sst" title="${esc(title)}">${esc(title)}</div><div class="dim">${esc(sub)}</div>
@@ -223,7 +221,7 @@ function statPopup(cover, title, sub, cells, logs, tagPaths) {
   const close = () => $('#statDlg')?.remove();
   $('#statClose').addEventListener('click', close);
   $('#statDlg').addEventListener('click', (e) => { if (e.target.id === 'statDlg') close(); });
-  $('#statTags').addEventListener('click', () => { close(); sendToTagger(tagPaths); });
+  $('#statTags').addEventListener('click', () => { close(); handEdit(tagPaths); });
 }
 function songRank(p) {
   const k = keyOf(p);
@@ -253,7 +251,6 @@ function showAlbumStats(key) {
     ['FIRST PLAYED', firsts.length ? fmtDay(Math.min(...firsts)) : 'NEVER'], ['LAST PLAYED', ago(last)], ['MOST PLAYED', top.r.n ? esc(songTitle(top.s)) : '--'],
   ], recs.flatMap((x) => x.r.log), songs.map((s) => s.path));
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#statDlg')?.remove(); });
 
 // the selected song's numbers, shown in the footer of the library and album page
 function selInfo(state) {
@@ -262,9 +259,9 @@ function selInfo(state) {
   return `1 SELECTED // PLAYED ${plural(r.n, 'TIME').toUpperCase()} // LAST PLAYED ${ago(r.last)}${r.sec ? ` // ${fmtHours(r.sec)} LISTENED` : ''}`;
 }
 
-// edit tags: only mp3/flac can be fixed by the tagger
+// edit tags: only mp3/flac/m4a can be fixed by the tagger
 function sendToTagger(paths) {
-  const ok = paths.filter((p) => /\.(mp3|flac)$/i.test(p));
-  if (!ok.length) return ask({ title: 'EDIT TAGS', text: 'The tagger can only fix MP3 and FLAC files.', ok: '[ OK ]' });
+  const ok = paths.filter((p) => /\.(mp3|flac|m4a)$/i.test(p));
+  if (!ok.length) return ask({ title: 'EDIT TAGS', text: 'The tagger can only fix MP3, FLAC and M4A files.', ok: '[ OK ]' });
   addPaths(ok);
 }

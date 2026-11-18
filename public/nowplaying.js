@@ -1,6 +1,6 @@
-// now playing: album art (with the hidden record), the oscilloscope, the opening aperture and the cassette.
-// which one shows is picked in options (NOW PLAYING DISPLAY)
-const NP = { mode: 'art', raf: 0, last: 0, disc: 0, reelL: 0, reelR: 0, vuL: 0, vuR: 0, blades: null, bladeLv: new Array(8).fill(0) };
+// now playing: album art (with the hidden record), the oscilloscope, the aperture and the cassette. which one
+// shows is picked in options (NOW PLAYING DISPLAY). under the song there's UP NEXT or the lyrics (UNDER THE SONG)
+const NP = { mode: 'art', raf: 0, last: 0, disc: 0, reelL: 0, reelR: 0, vuL: 0, vuR: 0, blades: null, cone: 0, shown: null };
 
 function ago(ms) {
   if (!ms) return 'NEVER';
@@ -12,6 +12,7 @@ function ago(ms) {
   return new Date(ms).toLocaleDateString();
 }
 
+const npLine = (s) => [s.album || 'Unknown Album', s.year, s.genre].filter(Boolean).join(' // ');
 function npInfo(s) {
   const o = order();
   const pos = o.indexOf(P.cur) + 1;
@@ -19,7 +20,7 @@ function npInfo(s) {
   const quality = [s.bitrate && `${s.bitrate} KBPS`, s.sampleRate && `${+(s.sampleRate / 1000).toFixed(1)} KHZ`].filter(Boolean).join(' // ') || '--';
   return `<div class="k">NOW PLAYING${pos ? ` // TRACK ${pos} OF ${o.length}` : ''}${P.shuffle ? ' // SHUFFLE' : ''}</div>
     <div class="big" title="${esc(songTitle(s))}">${esc(songTitle(s))}</div><div class="mid">${esc(s.artist || 'Unknown Artist')}</div>
-    <div class="dim">${[s.album || 'Unknown Album', s.year, s.genre].filter(Boolean).map(esc).join(' // ')}</div>
+    <div class="dim al">${esc(npLine(s))}</div>
     <div class="spec"><div><span>FORMAT</span>${esc(s.ext || '--')}${s.lossless ? ' // LOSSLESS' : ''}</div><div><span>QUALITY</span>${quality}</div>
       <div><span>PLAYED</span>${plural(pi.n, 'TIME').toUpperCase()}</div><div><span>LAST PLAYED</span>${ago(pi.last)}</div></div>`;
 }
@@ -32,31 +33,54 @@ function npUpNext(n) {
     return `<div class="row" data-u="${it.u}" title="Double-click to play"><span class="n">${at + i + 2}</span><span class="t">${esc(songTitle(s))}</span><span class="dim">${fmtTime(s.duration)}</span></div>`;
   }).join('') || `<div class="row dim">${P.repeat === 'all' ? 'Back to the start of the queue.' : 'Nothing after this one.'}</div>`}</div>`;
 }
+// whatever sits under the song: up next or the lyrics
+function npSide(n) {
+  if ((profile.npUnder || 'next') === 'lyrics') return `<div class="npside lyrside">${lyricsHtml()}</div>`;
+  return npUpNext(n);
+}
 const wideMode = () => NP.mode === 'scope' || NP.mode === 'cassette';
-
-function renderNp() {
+const sideRows = () => (wideMode() ? 6 : 8);
+function renderNp(typed = false) {
   const s = currentSong();
   const body = $('#npBody');
   if (!s) {
     body.innerHTML = '<div class="empty big">&gt; Nothing playing. Pick something in the <button class="cmd hot" id="npGoLib">[ LIBRARY ]</button></div>';
     $('#npGoLib').addEventListener('click', () => showView('lib'));
+    NP.shown = null;
     stopVis();
     return;
   }
+  // what the title lines said before, so a new song can type itself in over them
+  const before = NP.shown;
+  const side = npSide(sideRows());
   if (NP.mode === 'scope') {
     body.innerHTML = `<div class="np wide"><div class="stage scope"><canvas id="visCanvas"></canvas></div>
-      <div class="below"><div class="npinfo">${npInfo(s)}</div>${npUpNext(6)}</div></div>`;
+      <div class="below"><div class="npinfo">${npInfo(s)}</div>${side}</div></div>`;
   } else if (NP.mode === 'cassette') {
-    body.innerHTML = `<div class="np wide"><div class="stage casrow">${vuSvg('L')}${cassetteSvg(s)}${vuSvg('R')}</div>
-      <div class="below"><div class="npinfo">${npInfo(s)}</div>${npUpNext(6)}</div></div>`;
+    body.innerHTML = `<div class="np wide"><div class="stage casrow">${cassetteSvg(s)}</div>
+      <div class="below"><div class="npinfo">${npInfo(s)}</div>${side}</div></div>`;
   } else if (NP.mode === 'aperture') {
-    body.innerHTML = `<div class="np"><div class="stage blades">${bladesSvg()}</div><div class="npinfo">${npInfo(s)}${npUpNext(8)}</div></div>`;
+    body.innerHTML = `<div class="np"><div class="stage blades">${bladesSvg()}</div><div class="npinfo">${npInfo(s)}${side}</div></div>`;
   } else {
-    // album art. one click on the cover slides the record out, another puts it back
+    // album art. one click on the cover slides the record out, another puts it back.
+    // the shine turns with the record, it's what makes the spinning visible
     body.innerHTML = `<div class="np"><div class="vinylbox ${profile.vinyl ? 'out' : ''}" id="vinyl">
-      <div class="disc"><div class="platter" id="platter"><div class="label"><div class="logo"></div></div></div><div class="shine"></div></div>
-      ${artImg(s, 'cover')}</div><div class="npinfo">${npInfo(s)}${npUpNext(8)}</div></div>`;
+      <div class="disc"><div class="platter" id="platter" style="transform:rotate(${NP.disc.toFixed(1)}deg)"><div class="shine"></div><div class="label"><div class="logo"></div></div></div></div>
+      ${artImg(s, 'cover')}</div><div class="npinfo">${npInfo(s)}${side}</div></div>`;
   }
+  const now = { path: s.path, big: songTitle(s), mid: s.artist || 'Unknown Artist', al: npLine(s) };
+  for (const k of ['big', 'mid', 'al']) {
+    const el = $(`#npBody .npinfo .${k}`);
+    if (!el) continue;
+    if (typed && before && before.path !== s.path) {
+      el.textContent = before[k];
+      el.dataset.txt = before[k];
+    } else {
+      el.dataset.txt = now[k];
+    }
+    typeText(el, now[k]);
+  }
+  NP.shown = now;
   startVis();
 }
 
@@ -88,6 +112,7 @@ function startVis() {
     else if (NP.mode === 'aperture') drawBlades(dt);
     else if (NP.mode === 'cassette') drawCassette(dt);
     else drawDisc(dt);
+    drawLyrics();
   };
   NP.raf = requestAnimationFrame(frame);
 }
@@ -114,12 +139,12 @@ function drawScope() {
   x.clearRect(0, 0, W, H);
   const step = 40 * dpr;
   x.lineWidth = 1;
-  x.strokeStyle = 'rgba(245,163,26,0.10)';
+  x.strokeStyle = rgba('rgb', 0.10);
   x.beginPath();
   for (let gx = step; gx < W; gx += step) { x.moveTo(gx, 0); x.lineTo(gx, H); }
   for (let gy = H / 2 % step; gy < H; gy += step) { x.moveTo(0, gy); x.lineTo(W, gy); }
   x.stroke();
-  x.strokeStyle = 'rgba(245,163,26,0.32)';
+  x.strokeStyle = rgba('rgb', 0.32);
   x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.stroke();
 
   if (an) {
@@ -132,9 +157,9 @@ function drawScope() {
   const want = peak > 0.01 ? 0.85 / Math.max(peak, 0.12) : 1;
   scopeGain += (want - scopeGain) * 0.08;
   x.save();
-  x.shadowColor = 'rgba(255,170,40,0.9)';
+  x.shadowColor = rgba('lamp', 0.9);
   x.shadowBlur = 10 * dpr;
-  x.strokeStyle = '#ffc93c';
+  x.strokeStyle = C.hi;
   x.lineWidth = 2 * dpr;
   x.beginPath();
   const n = visBuf ? visBuf.length : 2;
@@ -145,7 +170,7 @@ function drawScope() {
   }
   x.stroke();
   x.restore();
-  x.fillStyle = 'rgba(245,163,26,0.55)';
+  x.fillStyle = rgba('rgb', 0.55);
   x.font = `${12 * dpr}px Consolas, monospace`;
   x.fillText('CH1  0.5V/DIV', 10 * dpr, 18 * dpr);
   const rate = ac ? `${(ac.sampleRate / 1000).toFixed(1)}kHz` : '';
@@ -153,7 +178,7 @@ function drawScope() {
   x.fillText(P.playing ? 'RUN' : 'HOLD', W - 44 * dpr, 18 * dpr);
 }
 
-// ---- opening aperture: each of the 8 blades slides outward with its own part of the music ----
+// ---- aperture: all 8 blades push out and back together on the bass, like a speaker cone ----
 // the blades come straight from aperture-science.svg, they're only moved, never redrawn
 const LOGO_SIZE = 1272.877;
 async function loadBlades() {
@@ -170,167 +195,210 @@ async function loadBlades() {
     const b = el.getBBox();
     const dx = b.x + b.width / 2 - LOGO_SIZE / 2, dy = b.y + b.height / 2 - LOGO_SIZE / 2;
     const len = Math.hypot(dx, dy) || 1;
-    // going round the circle, so neighbouring blades get neighbouring frequencies
-    return { d: p, ux: dx / len, uy: dy / len, ang: Math.atan2(dy, dx) };
-  }).sort((a, b) => a.ang - b.ang);
+    return { d: p, ux: dx / len, uy: dy / len };
+  });
   probe.remove();
   if (NP.mode === 'aperture' && view === 'np') renderNp();
 }
+// the logo is drawn at about 70% of the panel, so the blades have room to push out without leaving it
+const BLADE_PAD = 280, BLADE_PUSH = LOGO_SIZE * 0.15;
 function bladesSvg() {
   if (!NP.blades) { loadBlades(); return ''; }
-  const pad = 170;
+  const pad = BLADE_PAD, c = LOGO_SIZE / 2;
   return `<svg class="bladesvg" viewBox="${-pad} ${-pad} ${LOGO_SIZE + pad * 2} ${LOGO_SIZE + pad * 2}">
-    <defs><radialGradient id="bladeGrad" gradientUnits="userSpaceOnUse" cx="${LOGO_SIZE / 2}" cy="${LOGO_SIZE / 2}" r="${LOGO_SIZE / 2}">
-      <stop offset="0.2" stop-color="#ffc93c"/><stop offset="0.75" stop-color="#f5a31a"/></radialGradient></defs>
-    <circle cx="${LOGO_SIZE / 2}" cy="${LOGO_SIZE / 2}" r="${LOGO_SIZE * 0.62}" fill="none" stroke="rgba(245,163,26,0.14)" stroke-width="5"/>
-    <circle cx="${LOGO_SIZE / 2}" cy="${LOGO_SIZE / 2}" r="${LOGO_SIZE * 0.68}" fill="none" stroke="rgba(245,163,26,0.1)" stroke-width="5"/>
+    <defs><radialGradient id="bladeGrad" gradientUnits="userSpaceOnUse" cx="${c}" cy="${c}" r="${c}">
+      <stop offset="0.2" stop-color="${C.hi}"/><stop offset="0.75" stop-color="${C.main}"/></radialGradient></defs>
+    <circle cx="${c}" cy="${c}" r="${LOGO_SIZE * 0.55}" fill="none" stroke="${rgba('rgb', 0.14)}" stroke-width="5"/>
+    <circle cx="${c}" cy="${c}" r="${LOGO_SIZE * 0.7}" fill="none" stroke="${rgba('rgb', 0.1)}" stroke-width="5"/>
     <g id="bladeGroup" fill="url(#bladeGrad)">${NP.blades.map((b, i) => `<path id="blade${i}" d="${b.d}"/>`).join('')}</g></svg>`;
 }
+let bassAvg = 0, bassPeak = 0.1;
 function drawBlades() {
   if (!NP.blades) return;
   const an = getAnalyser();
-  const lv = new Array(8).fill(0);
-  let bass = 0;
+  let lv = 0;
   if (an) {
     if (!visFreq || visFreq.length !== an.frequencyBinCount) visFreq = new Uint8Array(an.frequencyBinCount);
     an.getByteFrequencyData(visFreq);
-    const bins = visFreq.length;
-    // 8 log-spaced bands, from the bass up to the highs
-    for (let i = 0; i < 8; i++) {
-      const a = Math.floor(2 * (bins / 4) ** (i / 8)), b = Math.max(a + 1, Math.floor(2 * (bins / 4) ** ((i + 1) / 8)));
-      let sum = 0;
-      for (let k = a; k < b; k++) sum += visFreq[k];
-      lv[i] = sum / ((b - a) * 255);
-    }
-    bass = lv[0];
+    // the kick and bass, about 35 to 160 Hz. the loudest bit counts
+    const hz = ac.sampleRate / an.fftSize;
+    const a = Math.max(1, Math.floor(35 / hz)), b = Math.max(a + 1, Math.ceil(160 / hz));
+    for (let k = a; k < b; k++) lv = Math.max(lv, visFreq[k] / 255);
   }
-  const push = LOGO_SIZE * 0.1;
+  // measured against the song's usual bass level and its recent loudest, so a steady hum barely moves
+  // the cone and every kick throws it right out
+  bassAvg += (lv - bassAvg) * 0.03;
+  bassPeak = Math.max(lv, bassPeak - 0.0015, bassAvg + 0.05);
+  const base = bassAvg * 0.8;
+  const target = clamp((lv - base) / (bassPeak - base), 0, 1) ** 1.3;
+  // a speaker pushes out fast and springs back nearly as fast
+  NP.cone += (target - NP.cone) * (target > NP.cone ? 0.65 : 0.3);
+  const push = NP.cone * BLADE_PUSH;
   NP.blades.forEach((b, i) => {
-    // quick to open, slower to close, so it breathes instead of flickering
-    const target = Math.min(1, lv[i] * 1.35);
-    NP.bladeLv[i] += (target - NP.bladeLv[i]) * (target > NP.bladeLv[i] ? 0.45 : 0.12);
     const el = document.getElementById('blade' + i);
-    if (el) el.setAttribute('transform', `translate(${(b.ux * NP.bladeLv[i] * push).toFixed(1)} ${(b.uy * NP.bladeLv[i] * push).toFixed(1)})`);
+    if (el) el.setAttribute('transform', `translate(${(b.ux * push).toFixed(1)} ${(b.uy * push).toFixed(1)})`);
   });
   const g = $('#bladeGroup');
   if (g) {
-    const glow = 6 + bass * 22;
-    g.style.filter = `drop-shadow(0 0 ${glow}px rgba(255,168,30,${0.45 + bass * 0.45}))`;
+    const c = LOGO_SIZE / 2, k = 1 + NP.cone * 0.04;
+    g.setAttribute('transform', `translate(${c} ${c}) scale(${k.toFixed(3)}) translate(${-c} ${-c})`);
+    g.style.filter = `drop-shadow(0 0 ${(6 + NP.cone * 26).toFixed(0)}px ${rgba('glow', (0.45 + NP.cone * 0.45).toFixed(2))})`;
   }
 }
 
-// ---- cassette between two VU meters ----
+// ---- cassette: a tape deck with a VU meter on each side, a tape counter and play/pause lamps ----
+// it's all one drawing, so it always fits the panel however narrow the window gets
 const CAS_ESC = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
-function cassetteSvg(s) {
-  const amber = '#f5a31a', dim = '#8c5c14', word = '#ffd52a';
-  const reel = (side, cx) => {
-    let teeth = '';
-    for (let i = 0; i < 6; i++) teeth += `<rect x="-2" y="-11.5" width="4" height="4" fill="${amber}" transform="rotate(${i * 60})"/>`;
-    let spokes = '';
-    for (let i = 0; i < 3; i++) spokes += `<rect x="-1.5" y="-36" width="3" height="22" fill="rgba(245,163,26,.25)" transform="rotate(${i * 120 + 30})"/>`;
-    return `<g transform="translate(${cx} 127)"><circle id="pack${side}" r="27" fill="#3a2a10" stroke="rgba(245,163,26,.35)" stroke-width="1"/>
-      <g id="reel${side}">${spokes}<circle r="13" fill="#1b1408" stroke="${amber}" stroke-width="1.5"/>${teeth}<circle r="5" fill="#0e0a04" stroke="${dim}" stroke-width="1"/></g></g>`;
-  };
-  const screw = (x, y) => `<g transform="translate(${x} ${y})"><circle r="5.5" fill="#241a09" stroke="${dim}"/><path d="M-3 0H3M0 -3V3" stroke="${dim}" stroke-width="1.2" transform="rotate(25)"/></g>`;
-  return `<svg class="cassette" viewBox="0 0 440 280">
-  <defs><clipPath id="casWin"><rect x="112" y="98" width="216" height="58" rx="29"/></clipPath></defs>
-  <rect x="2" y="2" width="436" height="276" rx="14" fill="#1b1408" stroke="${amber}" stroke-width="2"/>
-  <rect x="12" y="12" width="416" height="256" rx="9" fill="none" stroke="rgba(245,163,26,.2)"/>
-  ${screw(22, 22)}${screw(418, 22)}${screw(22, 258)}${screw(418, 258)}${screw(220, 252)}
-  <rect x="30" y="24" width="380" height="156" rx="6" fill="#241a09" stroke="${dim}"/>
-  <rect x="30" y="24" width="380" height="24" rx="6" fill="${amber}"/><rect x="30" y="38" width="380" height="10" fill="${amber}"/>
-  <text x="44" y="41" font-family="Consolas, monospace" font-size="12" letter-spacing="2" fill="#120c03">APERTURE TUNES // SIDE A</text>
-  <text x="396" y="41" text-anchor="end" font-family="Consolas, monospace" font-size="12" letter-spacing="1" fill="#120c03">C-60</text>
-  <rect x="42" y="58" width="26" height="30" fill="none" stroke="${amber}" stroke-width="1.5"/>
-  <text x="55" y="80" text-anchor="middle" font-family="Archivo, sans-serif" font-style="italic" font-weight="800" font-size="20" fill="${word}">A</text>
-  <text x="80" y="76" font-family="Archivo, sans-serif" font-style="italic" font-weight="800" font-size="19" fill="${word}">${CAS_ESC(cut(songTitle(s), 26))}</text>
-  <text x="80" y="92" font-family="Consolas, monospace" font-size="11" fill="${amber}">${CAS_ESC(cut([s.artist, s.album].filter(Boolean).join(' // '), 48))}</text>
-  <text x="44" y="172" font-family="Consolas, monospace" font-size="9" fill="${dim}" letter-spacing="1">TYPE I // NORMAL BIAS</text>
-  <text x="396" y="172" text-anchor="end" font-family="Consolas, monospace" font-size="9" fill="${dim}" letter-spacing="1">NR [X] OFF</text>
-  <rect x="110" y="96" width="220" height="62" rx="31" fill="#0e0a04" stroke="${dim}" stroke-width="1.5"/>
-  <g clip-path="url(#casWin)">${reel('L', 160)}${reel('R', 280)}<path id="tapeLine" d="M160 154 L280 154" stroke="#3a2a10" stroke-width="2"/></g>
-  <rect x="110" y="96" width="220" height="62" rx="31" fill="none" stroke="${amber}" stroke-width="1" opacity=".5"/>
-  <path d="M96 276 L116 214 H324 L344 276" fill="#160f05" stroke="${dim}" stroke-width="1.5"/>
-  <path d="M124 226 H316" stroke="#3a2a10" stroke-width="3"/>
-  <rect x="198" y="230" width="44" height="12" rx="2" fill="#0e0a04" stroke="${dim}"/>
-  <circle cx="148" cy="248" r="6" fill="#0e0a04" stroke="${dim}"/><circle cx="292" cy="248" r="6" fill="#0e0a04" stroke="${dim}"/>
-  <rect x="172" y="250" width="10" height="10" fill="#0e0a04" stroke="${dim}"/><rect x="258" y="250" width="10" height="10" fill="#0e0a04" stroke="${dim}"/>
-</svg>`;
-}
-function vuSvg(side) {
-  const amber = '#f5a31a', dim = '#8c5c14', red = '#ff5a3c';
+// the meters work like real VU meters: 0 VU is a normal loud song (9 dB under the loudest a file can go),
+// the scale is bunched up at the quiet end and wide at the top, and red runs from 0 to +3
+const VU_REF = -9, PEAK_VU = 4;
+const vuPos = (vu) => Math.min(1, Math.pow(10, (vu - 3) / 20));
+const REEL_X = [170, 290], REEL_Y = 139, HUB = 16, PACK_MIN = 17, PACK_ADD = 19;
+function vuMeter(side, x) {
+  const A = C.main, D = C.dim, RED = C.red;
   const cx = 75, cy = 92, R = 62, a0 = -140, a1 = -40;
+  const ang = (db) => a0 + (a1 - a0) * vuPos(db);
   const pt = (deg, r) => [cx + Math.cos((deg * Math.PI) / 180) * r, cy + Math.sin((deg * Math.PI) / 180) * r];
   let ticks = '';
-  for (let i = 0; i <= 10; i++) {
-    const d = a0 + ((a1 - a0) * i) / 10;
-    const [x1, y1] = pt(d, R), [x2, y2] = pt(d, R - (i % 5 ? 6 : 10));
-    ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${i >= 8 ? red : amber}" stroke-width="1.5"/>`;
+  for (const [db, major] of [[-20, 1], [-10, 1], [-7, 0], [-5, 1], [-3, 0], [-2, 0], [-1, 0], [0, 1], [1, 0], [2, 0], [3, 1]]) {
+    const [x1, y1] = pt(ang(db), R), [x2, y2] = pt(ang(db), R - (major ? 10 : 6));
+    ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${db >= 0 ? RED : A}" stroke-width="1.5"/>`;
   }
-  const [s1x, s1y] = pt(a0, R + 4), [s2x, s2y] = pt(a1 - 20, R + 4), [r2x, r2y] = pt(a1, R + 4);
+  const nums = [-20, -10, -5, 0, 3].map((db) => {
+    const [nx, ny] = pt(ang(db), R + 13);
+    return `<text x="${nx}" y="${ny + 3}" text-anchor="middle" font-family="Consolas, monospace" font-size="8" fill="${db >= 0 ? RED : D}">${db > 0 ? '+' : ''}${db}</text>`;
+  }).join('');
+  const [s1x, s1y] = pt(ang(-20), R + 4), [s2x, s2y] = pt(ang(0), R + 4), [r2x, r2y] = pt(a1, R + 4);
   // the needle is drawn pointing straight up and turned between -50 and +50 degrees
-  return `<svg class="vu" viewBox="0 0 150 110">
-    <rect x="1" y="1" width="148" height="108" rx="6" fill="#1b1408" stroke="${dim}"/>
-    <path d="M${s1x} ${s1y} A${R + 4} ${R + 4} 0 0 1 ${s2x} ${s2y}" fill="none" stroke="${amber}" stroke-width="2"/>
-    <path d="M${s2x} ${s2y} A${R + 4} ${R + 4} 0 0 1 ${r2x} ${r2y}" fill="none" stroke="${red}" stroke-width="2"/>
-    ${ticks}
-    <text x="${cx}" y="76" text-anchor="middle" font-family="Consolas, monospace" font-size="12" letter-spacing="2" fill="${dim}">VU</text>
-    <text x="12" y="100" font-family="Consolas, monospace" font-size="11" fill="${amber}">${side}</text>
-    <line id="needle${side}" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - R + 4}" stroke="#ffc93c" stroke-width="2" transform="rotate(-50 ${cx} ${cy})" style="filter: drop-shadow(0 0 3px rgba(255,190,60,.9))"/>
-    <circle cx="${cx}" cy="${cy}" r="5" fill="#241a09" stroke="${amber}"/>
-  </svg>`;
+  return `<g transform="translate(${x} 6) scale(1.36)">
+    <rect x="1" y="1" width="148" height="108" rx="6" fill="${C.panel}" stroke="${D}"/>
+    <path d="M${s1x} ${s1y} A${R + 4} ${R + 4} 0 0 1 ${s2x} ${s2y}" fill="none" stroke="${A}" stroke-width="2"/>
+    <path d="M${s2x} ${s2y} A${R + 4} ${R + 4} 0 0 1 ${r2x} ${r2y}" fill="none" stroke="${RED}" stroke-width="2"/>
+    ${ticks}${nums}
+    <text x="${cx}" y="74" text-anchor="middle" font-family="Consolas, monospace" font-size="11" letter-spacing="2" fill="${D}">VU</text>
+    <text x="10" y="101" font-family="Consolas, monospace" font-size="11" fill="${A}">${side === 'L' ? 'LEFT' : 'RIGHT'}</text>
+    <circle id="peak${side}" class="peak" cx="134" cy="97" r="4"/><text x="126" y="100.5" text-anchor="end" font-family="Consolas, monospace" font-size="7.5" fill="${D}" letter-spacing="1">PEAK</text>
+    <line id="needle${side}" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - R + 4}" stroke="${C.hi}" stroke-width="2" transform="rotate(${(-50 + NP['vu' + side] * 100).toFixed(1)} ${cx} ${cy})" style="filter: drop-shadow(0 0 3px ${rgba('hi2', 0.9)})"/>
+    <circle cx="${cx}" cy="${cy}" r="5" fill="${C.mid}" stroke="${A}"/></g>`;
 }
+function cassetteSvg(s) {
+  const A = C.main, D = C.dim, W = C.word;
+  const screw = (x, y) => `<g transform="translate(${x} ${y})"><circle r="5.5" fill="${C.mid}" stroke="${D}"/><path d="M-3 0H3M0 -3V3" stroke="${D}" stroke-width="1.2" transform="rotate(25)"/></g>`;
+  const reel = (side, cx) => `<g transform="translate(${cx} ${REEL_Y})"><circle id="pack${side}" r="${PACK_MIN + PACK_ADD / 2}" fill="${C.tape}" stroke="${rgba('rgb', 0.45)}" stroke-width="1"/>
+    ${[0.62, 0.8].map((f) => `<circle r="${((PACK_MIN + PACK_ADD) * f).toFixed(1)}" fill="none" stroke="rgba(0,0,0,.3)"/>`).join('')}
+    <g id="reel${side}" transform="rotate(${(side === 'L' ? NP.reelL : NP.reelR).toFixed(1)})"><circle r="${HUB}" fill="${C.dark2}" stroke="${A}" stroke-width="1.7"/>
+      ${[0, 60, 120, 180, 240, 300].map((a) => `<rect x="-2.2" y="${-HUB + 1.4}" width="4.4" height="6" fill="${A}" transform="rotate(${a})"/>`).join('')}
+      <circle r="5.5" fill="${C.deeper}" stroke="${D}"/></g></g>`;
+  const box = (x, inner) => `<g transform="translate(${x} 166)"><rect x="1" y="1" width="202" height="82" rx="6" fill="${C.panel}" stroke="${D}"/>${inner}</g>`;
+  const counter = box(0, `<text x="14" y="20" font-family="Consolas, monospace" font-size="10" letter-spacing="1.5" fill="${D}">TAPE COUNTER</text>
+    ${[0, 1, 2, 3].map((i) => `<rect x="${30 + i * 37}" y="30" width="31" height="40" rx="3" fill="${C.deeper}" stroke="${D}"/><text id="cnt${i}" x="${45.5 + i * 37}" y="60" text-anchor="middle" font-family="Consolas, monospace" font-size="27" fill="${C.hi}" style="filter: drop-shadow(0 0 3px ${rgba('lamp', 0.7)})">0</text>`).join('')}`);
+  const lamps = box(676, `<text x="14" y="20" font-family="Consolas, monospace" font-size="10" letter-spacing="1.5" fill="${D}">TRANSPORT</text>
+    <circle id="lampPlay" class="lamp" cx="32" cy="50" r="7"/><text x="46" y="55" font-family="Consolas, monospace" font-size="15" letter-spacing="1" fill="${A}">PLAY</text>
+    <circle id="lampPause" class="lamp" cx="112" cy="50" r="7"/><text x="126" y="55" font-family="Consolas, monospace" font-size="15" letter-spacing="1" fill="${A}">PAUSE</text>`);
+  // the song's own cover goes on the label, with the same tint as everywhere else
+  const cover = s.cover
+    ? `<image class="casart" href="/api/cover/${s.cover}" x="38" y="50" width="46" height="46" preserveAspectRatio="xMidYMid slice"/><rect x="38" y="50" width="46" height="46" fill="none" stroke="${D}"/>`
+    : `<rect x="38" y="50" width="46" height="46" fill="${C.dark4}" stroke="${D}"/><text x="61" y="81" text-anchor="middle" font-family="Archivo, sans-serif" font-style="italic" font-weight="800" font-size="24" fill="${W}">A</text>`;
+  const cassette = `<g transform="translate(241 0) scale(0.862)">
+    <rect x="2" y="2" width="456" height="286" rx="13" fill="${C.panel}" stroke="${A}" stroke-width="2"/>
+    <rect x="11" y="11" width="438" height="268" rx="8" fill="none" stroke="${rgba('rgb', 0.2)}"/>
+    ${screw(21, 21)}${screw(439, 21)}${screw(21, 269)}${screw(439, 269)}${screw(230, 262)}
+    <rect x="28" y="20" width="404" height="168" rx="6" fill="${C.mid}" stroke="${D}"/>
+    <path d="M28 26 a6 6 0 0 1 6 -6 h392 a6 6 0 0 1 6 6 v16 h-404 z" fill="${A}"/>
+    <text x="40" y="36" font-family="Consolas, monospace" font-size="11.5" letter-spacing="2" fill="${C.on}">APERTURE TUNES</text>
+    <text x="420" y="36" text-anchor="end" font-family="Consolas, monospace" font-size="11.5" letter-spacing="1" fill="${C.on}">SIDE A // C-60</text>
+    ${cover}
+    <text x="94" y="66" font-family="Archivo, sans-serif" font-style="italic" font-weight="800" font-size="19" fill="${W}">${CAS_ESC(cut(songTitle(s), 27))}</text>
+    <text x="94" y="82" font-family="Consolas, monospace" font-size="10.5" fill="${A}">${CAS_ESC(cut(s.artist || 'Unknown Artist', 46))}</text>
+    <text x="94" y="95" font-family="Consolas, monospace" font-size="10.5" fill="${D}">${CAS_ESC(cut([s.album, s.year].filter(Boolean).join(' // '), 46))}</text>
+    <text x="40" y="184" font-family="Consolas, monospace" font-size="8.5" fill="${D}" letter-spacing="1">TYPE I // NORMAL POSITION</text>
+    <text x="420" y="184" text-anchor="end" font-family="Consolas, monospace" font-size="8.5" fill="${D}" letter-spacing="1">NR [ ] IN  [X] OUT</text>
+    <rect x="100" y="102" width="260" height="74" rx="10" fill="${C.deepest}" stroke="${D}" stroke-width="1.5"/>
+    <clipPath id="deckWin"><rect x="101.5" y="103.5" width="257" height="71" rx="9"/></clipPath>
+    <g clip-path="url(#deckWin)">${reel('L', REEL_X[0])}${reel('R', REEL_X[1])}
+      <path id="tapeL" d="" stroke="${C.tape}" stroke-width="2.4"/><path id="tapeR" d="" stroke="${C.tape}" stroke-width="2.4"/></g>
+    ${[0, 1, 2, 3, 4].map((i) => `<path d="M${214 + i * 8} 104 v${i === 2 ? 8 : 5}" stroke="${rgba('rgb', 0.45)}"/>`).join('')}
+    <rect x="100" y="102" width="260" height="74" rx="10" fill="none" stroke="${A}" stroke-width="1" opacity=".55"/>
+    <path d="M102 288 L122 222 H338 L358 288" fill="${C.dark3}" stroke="${D}" stroke-width="1.5"/>
+    <path d="M132 233 H328" stroke="${C.tape}" stroke-width="3.5"/>
+    <rect x="208" y="238" width="44" height="12" rx="2" fill="${C.deepest}" stroke="${D}"/>
+    <circle cx="156" cy="258" r="7" fill="${C.deepest}" stroke="${D}"/><circle cx="304" cy="258" r="7" fill="${C.deepest}" stroke="${D}"/>
+    <rect x="181" y="260" width="10" height="10" fill="${C.deepest}" stroke="${D}"/><rect x="269" y="260" width="10" height="10" fill="${C.deepest}" stroke="${D}"/>
+  </g>`;
+  return `<svg class="deck" viewBox="0 0 880 250" preserveAspectRatio="xMidYMid meet">${vuMeter('L', 0)}${counter}${cassette}${vuMeter('R', 676)}${lamps}</svg>`;
+}
+// how loud one channel is right now, in VU (0 = normal loud) and as a needle position (0..1)
 let vuBuf = null;
+const SILENT = { lvl: 0, vu: -99 };
 function channelLevel(an) {
-  if (!an) return 0;
+  if (!an) return SILENT;
   if (!vuBuf || vuBuf.length !== an.fftSize) vuBuf = new Float32Array(an.fftSize);
   an.getFloatTimeDomainData(vuBuf);
   let sum = 0;
   for (let i = 0; i < vuBuf.length; i++) sum += vuBuf[i] * vuBuf[i];
-  const db = 20 * Math.log10(Math.sqrt(sum / vuBuf.length) + 1e-6);
-  return clamp((db + 30) / 30, 0, 1); // -30 dB rests at the left, 0 dB hits the red
+  const vu = 20 * Math.log10(Math.sqrt(sum / vuBuf.length) + 1e-6) - VU_REF;
+  return { lvl: vuPos(vu), vu };
 }
+NP.whirl = 0; NP.peakL = 0; NP.peakR = 0; NP.lastU = null;
 function drawCassette(dt) {
   const el = decks[A];
   const prog = el.duration ? clamp(el.currentTime / el.duration, 0, 1) : 0;
   // the tape winds from the left reel onto the right one as the song plays
-  const rL = 15 + (1 - prog) * 25, rR = 15 + prog * 25;
+  const rL = PACK_MIN + (1 - prog) * PACK_ADD, rR = PACK_MIN + prog * PACK_ADD;
   $('#packL')?.setAttribute('r', rL.toFixed(1));
   $('#packR')?.setAttribute('r', rR.toFixed(1));
-  $('#tapeLine')?.setAttribute('d', `M160 ${(127 + rL).toFixed(1)} L280 ${(127 + rR).toFixed(1)}`);
-  if (P.playing) {
+  $('#tapeL')?.setAttribute('d', `M${(REEL_X[0] - rL * 0.35).toFixed(1)} ${(REEL_Y + rL * 0.94).toFixed(1)} L104 182`);
+  $('#tapeR')?.setAttribute('d', `M${(REEL_X[1] + rR * 0.35).toFixed(1)} ${(REEL_Y + rR * 0.94).toFixed(1)} L356 182`);
+  // a new song makes the reels whizz for a moment, like the deck winding on to the next track
+  if (NP.lastU !== P.cur) { if (NP.lastU !== null) NP.whirl = 0.55; NP.lastU = P.cur; }
+  const fast = NP.whirl > 0 ? 9 : 1;
+  NP.whirl = Math.max(0, NP.whirl - dt);
+  if (P.playing || fast > 1) {
     // tape moves at a steady speed, so the reel with less tape on it turns faster
-    NP.reelL = (NP.reelL + (dt * 1800) / rL) % 360;
-    NP.reelR = (NP.reelR + (dt * 1800) / rR) % 360;
+    NP.reelL = (NP.reelL + (dt * 1600 * fast) / rL) % 360;
+    NP.reelR = (NP.reelR + (dt * 1600 * fast) / rR) % 360;
   }
   $('#reelL')?.setAttribute('transform', `rotate(${NP.reelL.toFixed(1)})`);
   $('#reelR')?.setAttribute('transform', `rotate(${NP.reelR.toFixed(1)})`);
   const [anL, anR] = getChannelAnalysers();
-  const tL = P.playing ? channelLevel(anL) : 0, tR = P.playing ? channelLevel(anR) : 0;
-  // needles jump up fast and fall back slowly, like real ones
-  NP.vuL += (tL - NP.vuL) * (tL > NP.vuL ? 0.35 : 0.08);
-  NP.vuR += (tR - NP.vuR) * (tR > NP.vuR ? 0.35 : 0.08);
+  const L = P.playing ? channelLevel(anL) : SILENT, R = P.playing ? channelLevel(anR) : SILENT;
+  // needles swing up quickly and settle back a little slower, at the same speed whatever the frame rate
+  const swing = (n, to) => n + (to - n) * (1 - Math.exp(-Math.min(dt, 0.1) / (to > n ? 0.06 : 0.12)));
+  NP.vuL = swing(NP.vuL, L.lvl);
+  NP.vuR = swing(NP.vuR, R.lvl);
   $('#needleL')?.setAttribute('transform', `rotate(${(-50 + NP.vuL * 100).toFixed(1)} 75 92)`);
   $('#needleR')?.setAttribute('transform', `rotate(${(-50 + NP.vuR * 100).toFixed(1)} 75 92)`);
+  // the peak light flashes on hits that go well into the red, quicker than the needle can show them
+  NP.peakL = L.vu >= PEAK_VU ? 0.25 : Math.max(0, NP.peakL - dt);
+  NP.peakR = R.vu >= PEAK_VU ? 0.25 : Math.max(0, NP.peakR - dt);
+  $('#peakL')?.classList.toggle('on', NP.peakL > 0);
+  $('#peakR')?.classList.toggle('on', NP.peakR > 0);
+  // the counter runs with the song, like the rolling numbers on a real deck
+  const n = String(Math.floor(el.currentTime || 0) % 10000).padStart(4, '0');
+  for (let i = 0; i < 4; i++) { const d = document.getElementById('cnt' + i); if (d && d.textContent !== n[i]) d.textContent = n[i]; }
+  $('#lampPlay')?.classList.toggle('on', P.playing);
+  $('#lampPause')?.classList.toggle('on', !P.playing);
 }
 
 function initNowPlaying() {
-  NP.mode = profile.npMode || 'art';
+  NP.mode = ['art', 'scope', 'aperture', 'cassette'].includes(profile.npMode) ? profile.npMode : 'art';
   if (NP.mode === 'aperture') loadBlades();
 }
 document.addEventListener('view', (e) => {
   if (e.detail === 'np') renderNp();
   else stopVis();
 });
+// the drawn displays use the theme's colours, so they get drawn again
+document.addEventListener('theme', () => { if (view === 'np') renderNp(); });
 document.addEventListener('player', (e) => {
   if (view !== 'np') return;
-  if (e.detail.track) return renderNp();
+  if (e.detail.track) return renderNp(true);
   // queue/shuffle/pause changes only touch the small bits, so the visualizer keeps running
   const s = currentSong();
+  if (!s) return renderNp();
   const up = $('#npBody .upnext');
-  if (s && up) {
-    up.outerHTML = npUpNext(wideMode() ? 6 : 8);
-    $('#npBody .npinfo .k').outerHTML = npInfo(s).split('\n')[0];
-  }
+  if (up) up.outerHTML = npUpNext(sideRows());
+  const k = $('#npBody .npinfo .k');
+  if (k) k.outerHTML = npInfo(s).split('\n')[0];
 });

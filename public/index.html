@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="aperture-science.svg">
 </head>
-<body>
+<body class="booting">
   <div class="screen" id="screen">
     <div class="frame"></div>
     <div class="dragbar"></div>
@@ -20,15 +20,15 @@
       <button data-win="close" title="Close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
     </div>
 
-    <div class="topmark"><img src="wordmark.svg" alt="Aperture Tunes" draggable="false"></div>
+    <div class="topmark" title="Aperture Tunes"><div class="wm"></div></div>
 
     <div class="hud">
       <div class="clock"><div id="time">--:--</div><div id="date">--/--/----</div></div>
       <div class="box matrix"><canvas id="matrix"></canvas></div>
       <div class="box stats" title="">
-        <div id="st1" title="Listened today">0M</div>
-        <div id="st2" title="Songs played today">0</div>
-        <div id="st3" title="Listened all-time">0M</div>
+        <div id="st1" title="Average match confidence">-.--</div>
+        <div id="st2" title="Songs tagged, all time">0</div>
+        <div id="st3" title="Session time (minutes)">0.0</div>
       </div>
       <div class="box mini"><div class="logo spin"></div></div>
     </div>
@@ -64,11 +64,12 @@
           <button class="tab" data-tab="albums">ALBUMS</button><button class="tab" data-tab="artists">ARTISTS</button><button class="tab" data-tab="genres">GENRES</button><button class="tab" data-tab="songs">ALL SONGS</button>
           <span class="tabsep" id="libModeSep"></span><button class="tab" data-mode="list" id="libList">[ LIST ]</button><button class="tab" data-mode="grid" id="libGridBtn">[ GRID ]</button>
         </div></div>
-        <div class="tool"><div class="search"><span class="gt">&gt; SEARCH:</span><input id="libSearch" spellcheck="false" autocomplete="off"></div><span class="count" id="libCount"></span></div>
+        <div class="tool"><div class="search"><span class="gt">&gt; SEARCH:</span><input id="libSearch" spellcheck="false" autocomplete="off"></div><label class="check" title="Show the selected song's tags on the side"><input type="checkbox" id="libTagsOn"><span></span>SHOW TAGS</label><span class="count" id="libCount"></span></div>
         <div class="pbody">
           <div class="groups" id="libGroups"></div>
           <div class="plist" id="libSongs"></div>
           <div class="grid" id="libGrid" hidden></div>
+          <aside class="tagside" id="libTags"></aside>
         </div>
         <div class="pfoot"><span class="info" id="libInfo"></span>
           <button class="cmd" id="libSelAll">[ SELECT ALL ]</button>
@@ -84,7 +85,7 @@
           <div class="k">ALBUM</div><div class="big" id="albTitle"></div><div class="mid" id="albArtist"></div><div class="k" id="albInfo"></div>
           <div class="acts"><button class="cmd hot" id="albPlay">[ PLAY ALBUM ]</button><button class="cmd" id="albQueue">[ ADD TO QUEUE ]</button><button class="cmd" id="albShuffle">[ SHUFFLE ]</button></div>
         </div></div>
-        <div class="plist" id="albSongs"></div>
+        <div class="pbody"><div class="plist" id="albSongs"></div><aside class="tagside" id="albTags"></aside></div>
         <div class="pfoot"><span class="info" id="albSel"></span><button class="cmd" id="albSelPlay">[ PLAY NOW ]</button><button class="cmd" id="albSelQueue">[ ADD TO QUEUE ]</button></div>
       </div>
 
@@ -97,7 +98,7 @@
       <div class="view" data-view="pl">
         <div class="ptitle"><span>APERTURE TUNES // PLAYLISTS</span></div>
         <div class="pbody"><div class="groups" id="plList"></div><div class="plist" id="plSongs"></div></div>
-        <div class="pfoot"><span class="info" id="plInfo"></span><button class="cmd" id="plRename">[ RENAME ]</button><button class="cmd" id="plDelete">[ DELETE ]</button><button class="cmd hot" id="plPlay">[ PLAY PLAYLIST ]</button></div>
+        <div class="pfoot"><span class="info" id="plInfo"></span><button class="cmd" id="plSaveAuto" hidden>[ SAVE AS PLAYLIST ]</button><button class="cmd" id="plRename">[ RENAME ]</button><button class="cmd" id="plDelete">[ DELETE ]</button><button class="cmd hot" id="plPlay">[ PLAY PLAYLIST ]</button></div>
       </div>
 
       <div class="view" data-view="eq">
@@ -123,13 +124,13 @@
               <div class="seg2" id="eqPre"><button class="cmd" data-pre="off">[ OFF // 0 dB ]</button><button class="cmd" data-pre="headroom">[ HEADROOM // -6 dB ]</button><button class="cmd" data-pre="boost">[ BOOST // +2 dB ]</button></div>
               <div class="slider" style="margin-top:10px"><div class="track" id="fxPre"><div class="fill"></div><div class="knob"></div></div><span class="num" id="fxPreNum"></span><span class="hint" id="fxPreHint"></span></div></div></div>
           </div>
-          <div class="pfoot"><span class="info dim">DRAG A DIAL UP OR DOWN // DOUBLE-CLICK TO RESET IT</span><button class="cmd" id="fxReset">[ RESET EFFECTS ]</button></div>
+          <div class="pfoot"><span class="info dim">GRAB A DIAL AND TURN IT // DOUBLE-CLICK TO RESET IT</span><button class="cmd" id="fxReset">[ RESET EFFECTS ]</button></div>
         </div>
       </div>
 
       <div class="view" data-view="stats">
         <div class="ptitle"><span>APERTURE TUNES // LISTENING STATISTICS</span><div class="tabs" id="statTabs">
-          <button class="tab" data-days="7">7 DAYS</button><button class="tab" data-days="30">30 DAYS</button><button class="tab" data-days="0">ALL TIME</button>
+          <button class="tab" data-days="7">7 DAYS</button><button class="tab" data-days="30">30 DAYS</button><button class="tab" data-days="0">ALL TIME</button><button class="tab" data-report="1">MONTHLY REPORTS</button>
         </div></div>
         <div class="stats-body" id="statsBody"></div>
       </div>
@@ -141,10 +142,24 @@
             <div id="optFolders"></div>
             <div class="seg2" style="margin-top:6px"><button class="cmd" id="optAddFolder">[ ADD FOLDER ]</button><button class="cmd" id="optRescan">[ RESCAN LIBRARY ]</button></div></div></div>
           <div class="opt"><div class="k">NOW PLAYING DISPLAY<small>What the big panel on the NOW PLAYING screen shows.</small></div><div class="seg2" id="optNp"><button class="cmd" data-np="art">[ ALBUM ART ]</button><button class="cmd" data-np="scope">[ OSCILLOSCOPE ]</button><button class="cmd" data-np="aperture">[ APERTURE ]</button><button class="cmd" data-np="cassette">[ CASSETTE ]</button></div></div>
-          <div class="opt"><div class="k">CROSSFADE<small>Fades one song into the next.</small></div><div class="slider"><div class="track" id="optFade"><div class="fill"></div><div class="knob"></div></div><span id="optFadeNum"></span></div></div>
+          <div class="opt"><div class="k">UNDER THE SONG<small>What shows under the song on the NOW PLAYING screen.</small></div><div class="seg2" id="optUnder"><button class="cmd" data-under="next">[ UP NEXT ]</button><button class="cmd" data-under="lyrics">[ LYRICS ]</button></div></div>
+          <div class="opt"><div class="k">LYRICS<small>Lyrics saved in the file always come first. Downloads need internet, and they're kept so they show offline next time.</small></div><div class="seg2" id="optLyr"><button class="cmd" data-lyr="1">[ DOWNLOAD THE MISSING ONES ]</button><button class="cmd" data-lyr="0">[ ONLY FROM THE FILE ]</button></div></div>
+          <div class="opt"><div class="k">CROSSFADE<small>Fades one song into the next, except where you say not to.</small></div><div class="xf">
+            <div class="slider"><div class="track" id="optFade"><div class="fill"></div><div class="knob"></div></div><span id="optFadeNum"></span></div>
+            <label class="check"><input type="checkbox" id="optXfAlbum"><span></span>NO FADE BETWEEN SONGS OF AN ALBUM THAT PLAY IN ORDER</label>
+            <div class="exk">EXCEPTIONS // THESE PLAY STRAIGHT INTO EACH OTHER, NO FADE</div>
+            <div id="optXfList"></div>
+            <div><button class="cmd hot bx" id="optXfAdd">[ + ADD EXCEPTION ]</button></div></div></div>
+          <div class="opt"><div class="k">SAME LOUDNESS<small>Quiet and loud songs play at about the same volume. Each song gets measured the first time it plays.</small></div><div class="seg2" id="optLoud"><button class="cmd" data-loud="1">[ ON ]</button><button class="cmd" data-loud="0">[ OFF ]</button></div></div>
           <div class="opt"><div class="k">WHEN CLOSING THE WINDOW</div><div class="seg2" id="optClosing"><button class="cmd" data-close="quit">[ QUIT ]</button><button class="cmd" data-close="tray">[ KEEP PLAYING IN TRAY ]</button><button class="cmd" data-close="mini">[ OPEN MINI PLAYER ]</button></div></div>
+          <div class="opt"><div class="k">SCREEN COLOUR<small>Aperture's two colours: amber like the old lab terminals, or blue like the other portal.</small></div><div class="seg2" id="optTheme"><button class="cmd" data-theme="amber">[ AMBER ]</button><button class="cmd" data-theme="blue">[ BLUE ]</button></div></div>
           <div class="opt"><div class="k">COVER ART COLOURS<small>Hovering a cover always shows its real colours.</small></div><div class="seg2" id="optTint"><button class="cmd" data-tint="1">[ AMBER TINT ]</button><button class="cmd" data-tint="0">[ ORIGINAL COLOURS ]</button></div></div>
           <div class="opt"><div class="k">WINDOW BUTTONS</div><div class="seg2"><button class="cmd" data-side="left">[ LEFT ]</button><button class="cmd" data-side="right">[ RIGHT ]</button></div></div>
+          <div class="opt"><div class="k">HIDE THE MOUSE<small>The pointer disappears when you leave it still over the app, and comes back as soon as you move it.</small></div><div class="seg2" id="optMouse"><button class="cmd" data-mouse="3">[ AFTER 3 SEC ]</button><button class="cmd" data-mouse="5">[ 5 SEC ]</button><button class="cmd" data-mouse="10">[ 10 SEC ]</button><button class="cmd" data-mouse="0">[ NEVER ]</button></div></div>
+          <div class="opt"><div class="k">SLEEP TIMER<small>Adds a button to the player bar that stops the music after a while.</small></div><div class="seg2" id="optSleep"><button class="cmd" data-sleep="1">[ SHOW IT ]</button><button class="cmd" data-sleep="0">[ HIDE IT ]</button></div></div>
+          <div class="opt"><div class="k">AUTO PLAYLISTS<small>MOST PLAYED, RECENTLY ADDED and NOT PLAYED LATELY in the side menu. They keep themselves up to date.</small></div><div class="seg2" id="optAuto"><button class="cmd" data-auto="1">[ SHOW THEM ]</button><button class="cmd" data-auto="0">[ HIDE THEM ]</button></div></div>
+          <div class="opt"><div class="k">BOOT SCREEN<small>The terminal start-up when you open the app. Any key or click skips it.</small></div><div class="seg2" id="optBoot"><button class="cmd" data-boot="1">[ ON ]</button><button class="cmd" data-boot="0">[ OFF ]</button></div></div>
+          <div class="opt"><div class="k">NEW VERSIONS<small>Checks GitHub when the app opens and tells you when there's a new version. It never downloads anything by itself.</small></div><div class="seg2" id="optUpd"><button class="cmd" data-upd="1">[ TELL ME ]</button><button class="cmd" data-upd="0">[ DON'T CHECK ]</button></div></div>
         </div>
       </div>
 
@@ -189,7 +204,7 @@
         </div>
         <div class="seek"><span id="pbCur">0:00</span><div class="track" id="pbSeek"><div class="fill"></div><div class="knob"></div></div><span id="pbDur">0:00</span></div>
       </div>
-      <div class="vol"><button class="ib eqb" id="pbEq" title="Equalizer">EQ</button><button class="ib" id="pbMute" title="Mute"><svg viewBox="0 0 14 14"><path d="M2 5h3l3-3v10l-3-3H2zM10 4.5a3.5 3.5 0 010 5M11.5 3a5.5 5.5 0 010 8"/></svg></button><div class="track" id="pbVol"><div class="fill"></div><div class="knob"></div></div></div>
+      <div class="vol"><button class="ib sleepb" id="pbSleep" title="Sleep timer" hidden></button><button class="ib eqb" id="pbEq" title="Equalizer">EQ</button><button class="ib" id="pbMute" title="Mute"><svg viewBox="0 0 14 14"><path d="M2 5h3l3-3v10l-3-3H2zM10 4.5a3.5 3.5 0 010 5M11.5 3a5.5 5.5 0 010 8"/></svg></button><div class="track" id="pbVol"><div class="fill"></div><div class="knob"></div></div></div>
     </div>
 
     <div class="fb" id="fb" hidden>
@@ -297,12 +312,17 @@
   </template>
 
   <script src="app.js"></script>
+  <script src="boot.js"></script>
   <script src="player.js"></script>
+  <script src="loudness.js"></script>
+  <script src="sleep.js"></script>
   <script src="library.js"></script>
   <script src="nowplaying.js"></script>
+  <script src="lyrics.js"></script>
   <script src="eq.js"></script>
   <script src="tagger.js"></script>
   <script src="stats.js"></script>
+  <script src="report.js"></script>
   <script src="menu.js"></script>
 </body>
 </html>

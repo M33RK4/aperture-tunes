@@ -7,9 +7,32 @@ const fmt = (s) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${Strin
 let state = { playing: false, cur: 0, dur: 0 };
 let stamp = Date.now();
 
+// a new song: the old title is backspaced away and the new one typed in, same as the big window
+const typing = new Map();
+function typeText(el, to) {
+  if (el.dataset.txt === to) return;
+  const first = el.dataset.txt === undefined, from = el.textContent;
+  el.dataset.txt = to;
+  const token = {};
+  typing.set(el, token);
+  if (first || document.hidden) { el.textContent = to; return; }
+  const t0 = performance.now(), tDel = Math.min(320, from.length * 18), tAdd = Math.min(720, to.length * 38);
+  el.classList.add('typing');
+  const step = (now) => {
+    if (typing.get(el) !== token) return;
+    const t = now - t0;
+    if (t < tDel) el.textContent = from.slice(0, Math.ceil(from.length * (1 - t / tDel)));
+    else if (t < tDel + tAdd) el.textContent = to.slice(0, Math.floor((to.length * (t - tDel)) / tAdd));
+    else { el.textContent = to; el.classList.remove('typing'); return; }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function draw() {
-  $('#mTitle').textContent = state.title || 'Nothing playing';
-  $('#mArtist').textContent = state.artist || '';
+  typeText($('#mTitle'), state.title || 'Nothing playing');
+  typeText($('#mArtist'), state.artist || '');
+  document.documentElement.classList.toggle('blue', state.theme === 'blue');
   const img = $('#mArt img');
   if (state.cover) { if (img.getAttribute('src') !== state.cover) img.src = state.cover; } else img.removeAttribute('src');
   document.body.classList.toggle('truecolor', state.tint === false);

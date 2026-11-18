@@ -18,6 +18,59 @@ function fmtTime(sec) {
 }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+// the colours canvases and drawn svgs use. the css has the same two sets (see html.blue in style.css)
+const THEMES = {
+  amber: {
+    main: '#f5a31a', hi: '#ffc93c', dim: '#8c5c14', word: '#ffd52a', lit: '#fff1b8', on: '#120c03', red: '#ff5a3c',
+    panel: '#1b1408', mid: '#241a09', deep: '#120c04', deeper: '#0e0a04', deepest: '#0b0803', dark2: '#150e05', dark3: '#160f05', dark4: '#170f05', tape: '#3d2c11',
+    rgb: '245,163,26', glow: '255,168,30', lamp: '255,170,40', hi2: '255,190,60', hi3: '255,200,60', hi4: '255,201,60',
+  },
+  // Portal's blue portal: 64,160,255
+  blue: {
+    main: '#40a0ff', hi: '#9ad4ff', dim: '#3a74b0', word: '#b5e2ff', lit: '#e6f5ff', on: '#030913', red: '#ff5a3c',
+    panel: '#08131f', mid: '#0b1828', deep: '#040a12', deeper: '#040910', deepest: '#03070d', dark2: '#050d17', dark3: '#050e18', dark4: '#061019', tape: '#12304f',
+    rgb: '64,160,255', glow: '80,170,255', lamp: '90,175,255', hi2: '140,205,255', hi3: '150,210,255', hi4: '154,212,255',
+  },
+};
+let C = THEMES.amber;
+const rgba = (k, a) => `rgba(${C[k]},${a})`;
+
+// song changes: the old text gets backspaced away and the new one typed in, like a terminal.
+// el.dataset.txt is where the text is heading, so calling this again with the same text does nothing
+const typingNow = new WeakMap();
+function typeText(el, to, animate = true) {
+  if (!el) return;
+  to = to ?? '';
+  if (el.dataset.txt === to) return;
+  const first = el.dataset.txt === undefined;
+  const from = el.textContent;
+  el.dataset.txt = to;
+  const token = {};
+  typingNow.set(el, token);
+  if (!animate || first || from === to || document.hidden) {
+    el.textContent = to;
+    el.classList.remove('typing');
+    return;
+  }
+  const t0 = performance.now(), del = from.length, add = to.length;
+  const tDel = Math.min(320, del * 18), tAdd = Math.min(720, add * 38);
+  el.classList.add('typing');
+  const step = (now) => {
+    if (typingNow.get(el) !== token) return;
+    const t = now - t0;
+    if (t < tDel) el.textContent = from.slice(0, Math.ceil(del * (1 - t / tDel)));
+    else if (t < tDel + tAdd) el.textContent = to.slice(0, Math.floor((add * (t - tDel)) / tAdd));
+    else {
+      el.textContent = to;
+      el.classList.remove('typing');
+      typingNow.delete(el);
+      return;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 const store = {
   async get() {
     if (desktop) return window.aperture.getProfile();
@@ -51,7 +104,12 @@ window.addEventListener('beforeunload', flushProfile);
 
 // ---- side menu / views ----
 let view = 'lib';
-function showView(name) {
+const hist = []; // the screens you came from, so Esc can go back
+function showView(name, back = false) {
+  if (!back && name !== view) {
+    hist.push(view);
+    if (hist.length > 30) hist.shift();
+  }
   view = name;
   $$('.main > .view').forEach((v) => (v.hidden = v.dataset.view !== (name === 'needs' ? 'lib' : name)));
   $$('#side .nav').forEach((n) => n.classList.toggle('on', n.dataset.view === name || (name === 'album' && n.dataset.view === 'lib')));
@@ -64,6 +122,61 @@ $('#side').addEventListener('click', (e) => {
   const n = e.target.closest('.nav[data-view]');
   if (n) showView(n.dataset.view);
 });
+// back to the screen you were on before. with nothing to go back to, that is now playing
+function goBack() {
+  let prev = hist.pop();
+  while (prev && prev === view) prev = hist.pop();
+  if (!prev && view !== 'np') prev = 'np';
+  if (prev) showView(prev, true);
+}
+// Esc closes whatever is on top first (menu, popup, file browser). with nothing open it goes back a screen
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  e.preventDefault();
+  if ($('.ctx')) return closeMenus();
+  if ($('.dlg.pop')) return $('.dlg.pop').remove();
+  if (!$('#askDlg').hidden) return askDone?.(null);
+  if (!$('#login').hidden) {
+    if (profile.username) $('#login').hidden = true; // the very first time you do need a name
+    return;
+  }
+  if (!$('#saveDlg').hidden) return closeSave();
+  if (!$('#fb').hidden) return closeBrowser();
+  if (e.target.closest?.('input, select, textarea')) return e.target.blur();
+  goBack();
+});
+
+// Ctrl+F: straight to the library's search box, from anywhere
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f' || e.altKey) return;
+  if ($('.dlg.pop') || !$('#askDlg').hidden || !$('#login').hidden || !$('#fb').hidden) return;
+  e.preventDefault();
+  if (view !== 'lib' && view !== 'needs') showView('lib');
+  $('#libSearch').focus();
+  $('#libSearch').select();
+});
+
+// the mouse pointer hides after a few seconds of not moving over the app
+let mouseTimer = 0, mouseX = -1, mouseY = -1, mouseDown = false;
+function hideMouseLater() {
+  clearTimeout(mouseTimer);
+  const sec = profile.hideMouse ?? 3;
+  if (!sec || mouseDown) return;
+  mouseTimer = setTimeout(() => document.documentElement.classList.add('nomouse'), sec * 1000);
+}
+function showMouse() {
+  document.documentElement.classList.remove('nomouse');
+  hideMouseLater();
+}
+// chromium sends a mousemove when the pointer style changes, so only a real move counts
+document.addEventListener('mousemove', (e) => {
+  if (e.clientX === mouseX && e.clientY === mouseY) return;
+  mouseX = e.clientX; mouseY = e.clientY;
+  showMouse();
+});
+document.addEventListener('mousedown', () => { mouseDown = true; showMouse(); });
+document.addEventListener('mouseup', () => { mouseDown = false; showMouse(); });
+document.documentElement.addEventListener('mouseleave', () => clearTimeout(mouseTimer));
 
 // ---- popups: ask({ title, text, input, value, ok }) resolves to the typed text / true, or null when cancelled ----
 let askDone = null;
@@ -120,6 +233,7 @@ function makeSlider(track, onChange) {
 // ---- username ----
 function showUser() {
   $('#username').textContent = profile.username || '—';
+  $('#st2').textContent = profile.taggedTotal || 0;
 }
 function askName() {
   $('#login').hidden = false;
@@ -151,19 +265,38 @@ function applyLayout() {
   $$('#optTint [data-tint]').forEach((b) => b.classList.toggle('on', (b.dataset.tint === '1') === (profile.tint !== false)));
   $$('#optClosing [data-close]').forEach((b) => b.classList.toggle('on', b.dataset.close === (profile.closeMode || 'quit')));
   $$('#optNp [data-np]').forEach((b) => b.classList.toggle('on', b.dataset.np === (profile.npMode || 'art')));
+  $$('#optUnder [data-under]').forEach((b) => b.classList.toggle('on', b.dataset.under === (profile.npUnder || 'next')));
+  $$('#optLyr [data-lyr]').forEach((b) => b.classList.toggle('on', (b.dataset.lyr === '1') === (profile.lyricsDl !== false)));
+  $$('#optMouse [data-mouse]').forEach((b) => b.classList.toggle('on', +b.dataset.mouse === (profile.hideMouse ?? 3)));
+  // on/off switches: [element, its data key, whether it's on]
+  for (const [sel, key, on] of [['#optLoud', 'loud', profile.sameLoudness !== false], ['#optSleep', 'sleep', !!profile.sleepBtn], ['#optAuto', 'auto', !!profile.autoPl], ['#optBoot', 'boot', profile.bootScreen !== false], ['#optUpd', 'upd', profile.updCheck !== false]]) {
+    $$(`${sel} [data-${key}]`).forEach((b) => b.classList.toggle('on', (b.dataset[key] === '1') === on));
+  }
   if (profile.sideWidth) $('.fb-side').style.width = `${profile.sideWidth}px`;
   const fade = profile.crossfade || 0;
   fadeSlider.set(fade / 12);
   $('#optFadeNum').textContent = fade ? `${fade} SEC` : 'OFF';
+  $('#optXfAlbum').checked = !!profile.xfAlbum;
+  renderXfPairs();
+  applyTheme();
 }
-let lastView = 'lib';
+// amber or blue. everything drawn in css follows the class on <html>, the canvases and svgs read C
+function applyTheme() {
+  const blue = profile.theme === 'blue';
+  const was = C;
+  C = blue ? THEMES.blue : THEMES.amber;
+  document.documentElement.classList.toggle('blue', blue);
+  $$('#optTheme [data-theme]').forEach((b) => b.classList.toggle('on', b.dataset.theme === (blue ? 'blue' : 'amber')));
+  $('#optTint [data-tint="1"]').textContent = blue ? '[ BLUE TINT ]' : '[ AMBER TINT ]';
+  if (was !== C) document.dispatchEvent(new CustomEvent('theme'));
+}
 $('#btnOpts').addEventListener('click', () => {
-  if (view === 'opts') return showView(lastView);
-  lastView = view;
+  if (view === 'opts') return goBack();
   renderFolders();
+  renderXfPairs();
   showView('opts');
 });
-$('#optClose').addEventListener('click', () => showView(lastView));
+$('#optClose').addEventListener('click', goBack);
 $$('[data-side]').forEach((b) => b.addEventListener('click', () => {
   saveProfile({ controls: b.dataset.side });
   applyLayout();
@@ -187,6 +320,100 @@ const fadeSlider = makeSlider($('#optFade'), (v, done) => {
   fadeSlider.set(sec / 12);
   $('#optFadeNum').textContent = sec ? `${sec} SEC` : 'OFF';
   if (done) saveProfile({ crossfade: sec });
+});
+$$('#optUnder [data-under]').forEach((b) => b.addEventListener('click', () => {
+  saveProfile({ npUnder: b.dataset.under });
+  applyLayout();
+  if (view === 'np') renderNp();
+}));
+$$('#optLyr [data-lyr]').forEach((b) => b.addEventListener('click', () => {
+  saveProfile({ lyricsDl: b.dataset.lyr === '1' });
+  applyLayout();
+  LY.id = null; // look again with the new setting
+  if (view === 'np') renderNp();
+}));
+$$('#optTheme [data-theme]').forEach((b) => b.addEventListener('click', () => {
+  saveProfile({ theme: b.dataset.theme });
+  applyLayout();
+  sendMini();
+}));
+$$('#optMouse [data-mouse]').forEach((b) => b.addEventListener('click', () => {
+  saveProfile({ hideMouse: +b.dataset.mouse });
+  applyLayout();
+  showMouse();
+}));
+// the on/off switches, and what each one changes right away
+const SWITCHES = {
+  loud: ['sameLoudness', () => loudRefresh()],
+  sleep: ['sleepBtn', () => sleepDraw()],
+  auto: ['autoPl', () => renderPlNav()],
+  boot: ['bootScreen', () => {}],
+  upd: ['updCheck', () => checkForUpdate()],
+};
+for (const [key, [field, after]] of Object.entries(SWITCHES)) {
+  $$(`[data-${key}]`).forEach((b) => b.addEventListener('click', () => {
+    saveProfile({ [field]: b.dataset[key] === '1' });
+    applyLayout();
+    after();
+  }));
+}
+
+// ---- crossfade exceptions: song pairs that play straight into each other ----
+$('#optXfAlbum').addEventListener('change', (e) => saveProfile({ xfAlbum: e.target.checked }));
+function renderXfPairs() {
+  const pairs = profile.xfPairs || [];
+  const name = (p) => { const s = libSong(p) || fallbackSong(p); return songTitle(s); };
+  $('#optXfList').innerHTML = pairs.map((x, i) => {
+    const a = libSong(x.a), b = libSong(x.b);
+    const who = [...new Set([a?.artist, b?.artist].filter(Boolean))].join(' / ');
+    return `<div class="ex"><span class="a" title="${esc(x.a)}">${esc(name(x.a))}</span><span class="to">→</span><span class="a" title="${esc(x.b)}">${esc(name(x.b))}</span><span class="d">${esc(who)}</span><button class="cmd" data-x="${i}" title="Remove this exception">[ ✕ ]</button></div>`;
+  }).join('') || '<div class="ex none">None yet.</div>';
+}
+$('#optXfList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-x]');
+  if (!b) return;
+  const pairs = [...(profile.xfPairs || [])];
+  pairs.splice(+b.dataset.x, 1);
+  saveProfile({ xfPairs: pairs });
+  renderXfPairs();
+});
+// picking the two songs: a search box on each side, click a song to pick it
+$('#optXfAdd').addEventListener('click', () => {
+  $('.dlg.pop')?.remove();
+  const pick = { a: null, b: null };
+  screen.insertAdjacentHTML('beforeend', `<div class="dlg pop exdlg" id="xfDlg"><div class="dlgbox xwide"><div class="t">APERTURE TUNES // ADD CROSSFADE EXCEPTION</div>
+    <div class="b"><div class="note">When the first song ends and the second one plays right after it, they go straight into each other with no fade. Handy for songs that are made to run together.</div>
+      <div class="pairs"><div class="col"><span>WHEN THIS SONG ENDS</span><input data-side="a" spellcheck="false" placeholder="Search your library"><div class="res" data-res="a"></div></div>
+        <div class="arrow">→</div>
+        <div class="col"><span>AND THIS ONE IS NEXT</span><input data-side="b" spellcheck="false" placeholder="Search your library"><div class="res" data-res="b"></div></div></div>
+      <div class="act"><button class="cmd" id="xfNo">[ CANCEL ]</button><button class="cmd hot" id="xfYes" disabled>[ ADD ]</button></div></div></div></div>`);
+  const dlg = $('#xfDlg');
+  const draw = (side) => {
+    const q = dlg.querySelector(`input[data-side="${side}"]`).value.trim().toLowerCase();
+    const list = (q ? LIB.songs.filter((s) => `${songTitle(s)} ${s.artist} ${s.album}`.toLowerCase().includes(q)) : pick[side] ? [libSong(pick[side])].filter(Boolean) : [])
+      .slice(0, 40);
+    dlg.querySelector(`[data-res="${side}"]`).innerHTML = list.map((s) => `<div class="${s.path === pick[side] ? 'on' : ''}" data-p="${esc(s.path)}">${esc(songTitle(s))} <i>// ${esc(s.artist || 'Unknown Artist')} // ${esc(s.album || 'Unknown Album')}</i></div>`).join('')
+      || `<div class="none">${q ? 'Nothing found.' : 'Type to search.'}</div>`;
+    $('#xfYes').disabled = !pick.a || !pick.b || pick.a === pick.b;
+  };
+  dlg.addEventListener('input', (e) => e.target.dataset.side && draw(e.target.dataset.side));
+  dlg.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-p]');
+    if (r) {
+      const side = r.parentElement.dataset.res;
+      pick[side] = r.dataset.p;
+      draw(side);
+    }
+    if (e.target.closest('#xfNo')) dlg.remove();
+  });
+  $('#xfYes').addEventListener('click', () => {
+    const pairs = (profile.xfPairs || []).filter((x) => !(x.a === pick.a && x.b === pick.b));
+    saveProfile({ xfPairs: [...pairs, { a: pick.a, b: pick.b }] });
+    renderXfPairs();
+    dlg.remove();
+  });
+  draw('a'); draw('b');
+  setTimeout(() => dlg.querySelector('input').focus(), 30);
 });
 
 function renderFolders() {
@@ -217,11 +444,13 @@ $('#optAddFolder').addEventListener('click', () => openBrowser(true, {
 $('#optRescan').addEventListener('click', () => rescanLibrary());
 
 // ---- HUD ----
+const started = Date.now();
 function tick() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
   $('#time').textContent = `${p(d.getHours())}:${p(d.getMinutes())}`;
   $('#date').textContent = `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  $('#st3').textContent = ((Date.now() - started) / 60000).toFixed(1);
 }
 tick();
 setInterval(tick, 1000);
@@ -243,8 +472,8 @@ setInterval(tick, 1000);
   }));
   function draw() {
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#f5a31a';
-    ctx.shadowColor = 'rgba(255,168,30,0.8)';
+    ctx.fillStyle = C.main;
+    ctx.shadowColor = rgba('glow', 0.8);
     ctx.shadowBlur = 3;
     cols.forEach((c, x) => {
       if (c.gap) return;
@@ -294,16 +523,45 @@ document.addEventListener('drop', (ev) => {
   if (ev.dataTransfer?.files?.length) addFiles(ev.dataTransfer.files);
 });
 
+// NEW VERSIONS: a note above OPTIONS when GitHub has a newer version. clicking it opens the download page in
+// your normal browser. nothing ever gets downloaded by the app itself
+async function checkForUpdate() {
+  $('#updRow')?.remove();
+  if (profile.updCheck === false) return;
+  try {
+    const u = await (await fetch('/api/update')).json();
+    if (!u.newer || !u.url || profile.updCheck === false) return;
+    $('#btnOpts').insertAdjacentHTML('beforebegin', `<div class="updrow" id="updRow" title="Opens the download page in your browser">▲ VERSION ${esc(u.latest)} IS OUT<small>CLICK TO GET IT</small></div>`);
+    $('#updRow').addEventListener('click', () => window.open(u.url, '_blank'));
+  } catch {}
+}
+
+let APP_VERSION = '';
 async function boot() {
   profile = await store.get();
   showUser();
   applyLayout();
+  sleepDraw();
+  // the boot screen starts straight away and runs while everything below loads
+  const booting = bootStart();
   initPlayer();
   initEq();
   initNowPlaying();
   await initStats();
+  await initLoudness();
   await initLibrary();
   showView(profile.view || 'lib');
+  hist.length = 0;
+  hideMouseLater();
+  APP_VERSION = await fetch('/api/version').then((r) => r.json()).then((v) => v.version).catch(() => '');
+  bootData({
+    version: APP_VERSION, folders: (profile.folders || []).length,
+    songs: LIB.songs.length || (LIB.scanning ? 'SCANNING' : 0), queue: P.queue.length,
+    eq: EQ.state.on ? `${EQ.state.n} BANDS` : 'BYPASSED', user: profile.username || '',
+  });
+  await booting;
   if (!profile.username) askName();
+  checkForUpdate();
+  reportReadyNote();
 }
 document.addEventListener('DOMContentLoaded', boot);

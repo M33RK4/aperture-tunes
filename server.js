@@ -7,9 +7,11 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseFilename, cleanTitle, stripFeat, safeFilename } from './lib/clean.js';
 import { identify, unifyAlbums, fetchImage } from './lib/lookup.js';
-import { readExisting, writeTags, SUPPORTED } from './lib/tagger.js';
+import { readExisting, writeTags, editTags, writeLyrics, SUPPORTED } from './lib/tagger.js';
 import { roots, list, scan } from './lib/files.js';
-import { initLibrary, getLibrary, scanLibrary, pathForId, coverPath } from './lib/library.js';
+import { initLibrary, getLibrary, scanLibrary, pathForId, songForId, coverPath, readAllTags, refreshSongs } from './lib/library.js';
+import { initLyrics, getLyrics, downloadedText } from './lib/lyrics.js';
+import { initLoudness, allLoudness, setLoudness } from './lib/loudness.js';
 
 const ROOT = path.join(os.tmpdir(), 'aperture-tunes');
 const UPLOADS = path.join(ROOT, 'uploads');
@@ -35,6 +37,26 @@ app.use((req, res, next) => (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.header
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+app.get('/api/version', (req, res) => res.json({ version: PKG.version }));
+// NEW VERSIONS: is there a newer release on GitHub? asked once per start, and only when that option is on
+const newerThan = (a, b) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+let updCache = null;
+app.get('/api/update', async (req, res) => {
+  updCache ||= fetch('https://api.github.com/repos/M33RK4/aperture-tunes/releases/latest', { headers: { 'User-Agent': 'ApertureTunes', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (j && j.tag_name ? { latest: String(j.tag_name).replace(/^v/i, ''), url: String(j.html_url || '') } : null))
+    .catch(() => null);
+  const u = await updCache;
+  if (!u) updCache = null;
+  const newer = !!u && /^\d+(\.\d+)*$/.test(u.latest) && newerThan(u.latest, PKG.version) && u.url.startsWith('https://github.com/');
+  res.json({ current: PKG.version, latest: u?.latest || null, newer, url: newer ? u.url : null });
+});
+
 app.get('/api/fs/roots', (req, res) => res.json(roots()));
 
 // the music library. main.js tells us where the windows music folder and the app data folder are
@@ -55,6 +77,65 @@ app.get('/api/cover/:name', (req, res) => {
   const p = coverPath(req.params.name);
   if (!p) return res.status(404).end();
   res.sendFile(p, { headers: { 'Cache-Control': 'max-age=31536000' } });
+});
+// what's written in a song's tags right now, straight from the file
+app.get('/api/tags/:id', async (req, res) => {
+  const p = pathForId(req.params.id);
+  if (!p || !fs.existsSync(p)) return res.status(404).json({ error: 'File not found' });
+  try {
+    res.json(await readAllTags(p));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// how loud songs are (measured by the player for SAME LOUDNESS)
+app.get('/api/loudness', (req, res) => res.json(allLoudness()));
+app.post('/api/loudness/:id', (req, res) => {
+  const { lufs, peak } = req.body || {};
+  if (!/^[0-9a-f]{16}$/.test(req.params.id) || !Number.isFinite(lufs) || !Number.isFinite(peak)) return res.status(400).end();
+  setLoudness(req.params.id, lufs, peak);
+  res.json({ ok: true });
+});
+
+// lyrics for a song: from its file, or downloaded (if ?dl=1) and kept for next time
+app.get('/api/lyrics/:id', async (req, res) => {
+  const s = songForId(req.params.id);
+  if (!s || !fs.existsSync(s.path)) return res.status(404).json({ source: 'none' });
+  res.json(await getLyrics(s, req.query.dl === '1'));
+});
+// [ SAVE TO FILE ]: the downloaded lyrics go into the song's own file
+app.post('/api/lyrics/:id/save', async (req, res) => {
+  const s = songForId(req.params.id);
+  if (!s || !fs.existsSync(s.path)) return res.status(404).json({ error: 'File not found' });
+  const text = downloadedText(s.id);
+  if (!text) return res.status(400).json({ error: 'No downloaded lyrics for this song' });
+  try {
+    await writeLyrics(s.path, text);
+    await refreshSongs([s.path]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// edit tags by hand: writes only what you changed straight into the songs' files, then re-reads them
+// body: { ids: [library song ids], changes: { title, artist, ... } } -> { songs: [updated], failed: [{ name, error }] }
+app.post('/api/edit-tags', async (req, res) => {
+  const { ids = [], changes = {} } = req.body || {};
+  const clean = Object.fromEntries(Object.entries(changes).filter(([, v]) => typeof v === 'string' || typeof v === 'number'));
+  const done = [], failed = [];
+  for (const id of ids) {
+    const p = pathForId(id);
+    if (!p || !fs.existsSync(p)) { failed.push({ name: id, error: 'File not found' }); continue; }
+    try {
+      await editTags(p, clean);
+      done.push(p);
+    } catch (e) {
+      failed.push({ name: path.basename(p), error: e.message });
+    }
+  }
+  res.json({ songs: await refreshSongs(done), failed });
 });
 
 app.get('/api/fs/list', (req, res) => {
@@ -243,7 +324,10 @@ app.post('/api/reset', (req, res) => {
 
 // port 0 = any free port, the window just loads whichever one we get
 export function startServer(port = 0) {
-  initLibrary(process.env.APERTURE_DATA || path.join(os.tmpdir(), 'aperture-tunes-data'));
+  const data = process.env.APERTURE_DATA || path.join(os.tmpdir(), 'aperture-tunes-data');
+  initLibrary(data);
+  initLyrics(data);
+  initLoudness(data);
   return new Promise((resolve) => {
     const srv = app.listen(port, '127.0.0.1', () => resolve(srv.address().port));
   });

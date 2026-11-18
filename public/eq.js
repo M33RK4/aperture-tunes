@@ -165,20 +165,28 @@ function drawDial(k) {
 }
 for (const [k, d] of Object.entries(DIALS)) {
   const el = $(d.el);
-  // drag up/down to turn it, like most audio software
+  // you turn it like a real knob: grab it and drag around its middle
   el.addEventListener('mousedown', (e) => {
     e.preventDefault();
-    const y0 = e.clientY, v0 = d.get();
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const angle = (ev) => (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180) / Math.PI;
+    let last = angle(e), v = d.get();
+    el.classList.add('turning');
     const move = (ev) => {
-      let v = clamp(v0 + (y0 - ev.clientY) / 160, 0, 1);
-      if (d.centred && Math.abs(v - 0.5) < 0.02) v = 0.5; // snaps to the middle
-      d.set(v);
+      const a = angle(ev);
+      let turn = a - last;
+      if (turn > 180) turn -= 360; else if (turn < -180) turn += 360; // crossing the left side of the dial
+      last = a;
+      v = clamp(v + turn / 270, 0, 1); // the dial sweeps 270 degrees from empty to full
+      d.set(d.centred && Math.abs(v - 0.5) < 0.02 ? 0.5 : v); // balance snaps to the middle
       drawDial(k);
       applyFx();
     };
     const up = () => {
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup', up);
+      el.classList.remove('turning');
       saveEq();
     };
     document.addEventListener('mousemove', move);

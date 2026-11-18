@@ -50,7 +50,6 @@ function openMenu(x, y, title, items, parent = null) {
   return m;
 }
 document.addEventListener('mousedown', (e) => { if (!e.target.closest('.ctx')) closeMenus(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
 window.addEventListener('blur', closeMenus);
 document.addEventListener('scroll', closeMenus, true);
 
@@ -110,9 +109,10 @@ function songMenu(songs, extra = []) {
       { label: 'PLAY ALBUM', act: () => playPaths(albumSongs(albumKey(one)).map((s) => s.path)) },
       { label: 'GO TO ALBUM', act: () => openAlbum(albumKey(one)) },
       '-',
-      { label: 'VIEW STATISTICS', act: () => showSongStats(one) });
+      { label: 'VIEW STATISTICS', act: () => showSongStats(one) },
+      { label: 'VIEW TAGS', act: () => showTags(one) });
   } else items.push('-');
-  items.push({ label: 'EDIT TAGS', hint: one ? 'IN TAGGER' : songsWord(paths.length), act: () => sendToTagger(paths) });
+  items.push({ label: 'EDIT TAGS', hint: one ? '' : songsWord(paths.length), act: () => handEdit(paths) });
   if (extra.length) items.push('-', ...extra);
   const title = one ? `${songTitle(one)} // ${one.artist || 'Unknown Artist'}` : `${songsWord(songs.length)} SELECTED`;
   return { title: title.toUpperCase(), items };
@@ -131,7 +131,7 @@ function albumMenu(key) {
       { label: 'ADD TO PLAYLIST', sub: playlistSub(paths) },
       '-',
       { label: 'VIEW STATISTICS', act: () => showAlbumStats(key) },
-      { label: 'EDIT TAGS', hint: songsWord(paths.length), act: () => sendToTagger(paths) },
+      { label: 'EDIT TAGS', hint: songsWord(paths.length), act: () => handEdit(paths) },
     ],
   };
 }
