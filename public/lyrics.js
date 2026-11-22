@@ -23,7 +23,8 @@ function lyricsFor(s) {
 function lyricsHtml() {
   lyricsFor(currentSong());
   const d = LY.data;
-  const from = d?.source === 'file' ? 'FROM THE FILE' : 'DOWNLOADED FROM LRCLIB';
+  // in a narrow panel the "DOWNLOADED FROM" part gets left out, so the label and its button still fit
+  const from = d?.source === 'file' ? 'FROM THE FILE' : '<span class="long">DOWNLOADED FROM </span>LRCLIB';
   let src = '', body;
   if (!d) body = '<div class="msg">&gt; LOOKING FOR LYRICS<span class="cursor">_</span></div>';
   else if (d.instrumental) body = '<div class="msg">&gt; INSTRUMENTAL. NO WORDS IN THIS ONE.</div>';
@@ -42,8 +43,24 @@ function lyricsHtml() {
     src += LY.saved === LY.id ? '<span class="saved">SAVED IN THE FILE</span>'
       : `<button class="cmd savel" id="lySave" title="Writes them into the song's file, so other music apps (like the one on your phone) show them too">[ SAVE TO FILE ]</button>`;
   }
-  return `<div class="lyr"><div class="sk"><span>LYRICS</span><span class="src">${src}</span></div>${body}</div>`;
+  // synced ones can be moved a little when this song's timing is off
+  const nudge = d?.synced?.length ? `<span class="lnudge" title="Lyrics too early or too late? Move them for this song"><button class="cmd" data-nudge="-0.1" title="Show the lines sooner">[ ◄ ]</button><b id="lyNudge">${lyrNudgeTxt()}</b><button class="cmd" data-nudge="0.1" title="Show the lines later">[ ► ]</button></span>` : '';
+  return `<div class="lyr"><div class="sk"><span>LYRICS</span>${nudge}<span class="src">${src}</span></div>${body}</div>`;
 }
+// how much this song's lyrics are moved: + is later, − is sooner. kept per song
+const lyrNudge = () => (profile.lyrNudge || {})[LY.id] || 0;
+const lyrNudgeTxt = () => { const n = lyrNudge(); return n ? `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1)} S` : 'ON TIME'; };
+$('#npBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-nudge]');
+  if (!b || !LY.id) return;
+  const n = Math.round((lyrNudge() + +b.dataset.nudge) * 10) / 10;
+  const all = { ...(profile.lyrNudge || {}) };
+  if (Math.abs(n) < 0.05) delete all[LY.id]; else all[LY.id] = Math.max(-10, Math.min(10, n));
+  saveProfile({ lyrNudge: all });
+  const lbl = $('#lyNudge');
+  if (lbl) lbl.textContent = lyrNudgeTxt();
+  LY.idx = -2;
+});
 $('#npBody').addEventListener('click', async (e) => {
   const b = e.target.closest('#lySave');
   if (!b || !LY.id) return;
@@ -69,8 +86,10 @@ function drawLyrics() {
   if (!lines?.length) return;
   const box = $('#npBody .lyr .lview'), list = $('#npBody .lyr .lines.synced');
   if (!box || !list) return;
-  // a hair early, so the line lights up as the singer comes in
-  const t = (decks[A].currentTime || 0) + 0.2;
+  // the player's clock runs ahead of what you actually hear by the sound card's delay, so that gets taken off (the
+  // lines used to switch a little before the words came). then this song's own nudge
+  const lag = ac ? (ac.outputLatency || 0) + (ac.baseLatency || 0) : 0;
+  const t = (decks[A].currentTime || 0) - lag - lyrNudge();
   let lo = 0, hi = lines.length - 1, i = -1;
   while (lo <= hi) { const m = (lo + hi) >> 1; if (lines[m].t <= t) { i = m; lo = m + 1; } else hi = m - 1; }
   const h = box.clientHeight;

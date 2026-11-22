@@ -686,6 +686,21 @@ html.nomouse, html.nomouse * { cursor: none !important; }
 .np.wide .below .npside { margin-top: 0; border-top: none; border-left: 1px dashed rgba(var(--rgb), 0.2); padding: 0 0 0 20px; }
 .npside .sk { display: flex; justify-content: space-between; align-items: center; color: var(--amber-dim); font-size: 11px; letter-spacing: 1px; margin-bottom: 6px; gap: 10px; }
 .npside .sk .cmd { font-size: 11px; padding: 0 4px; }
+/* oscilloscope and cassette: the lyrics fill the space next to the song info instead of making it taller (a long
+   song's lyrics used to push down past the player bar) */
+.np.wide .below .npside.lyrside > .lyr { position: absolute; top: 0; bottom: 0; left: 20px; right: 0; height: auto; }
+/* moving this song's lyrics sooner / later */
+.lyr .lnudge { display: flex; align-items: center; gap: 2px; margin-right: auto; margin-left: 12px; white-space: nowrap; }
+.lyr .lnudge b { font-weight: normal; color: var(--amber); min-width: 58px; text-align: center; }
+/* a narrow lyrics panel (next to the oscilloscope or cassette, or a small window): where the lyrics come from and
+   [ SAVE TO FILE ] go on a second row instead of getting squeezed and cut off, and shorten if it's still tight */
+@container (max-width: 620px) {
+  .lyr .sk { flex-wrap: wrap; row-gap: 3px; }
+  .lyr .sk .src { flex-basis: 100%; }
+}
+@container (max-width: 400px) {
+  .lyr .sk .src .long { display: none; }
+}
 
 /* lyrics: the line being sung lights up, the rest scroll past */
 .lyr { display: flex; flex-direction: column; height: 100%; }
