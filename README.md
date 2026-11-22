@@ -13,6 +13,21 @@ This is a personal fan project, not a real product. It isn't for sale and isn't 
 
 ---
 
+## Screenshots
+
+Amber is the default look, and blue is one click away in the options.
+
+| | |
+|:---:|:---:|
+| ![The boot screen](screenshots/boot.png) | ![Now Playing with the record slid out](screenshots/now-playing.png) |
+| **The boot screen** | **Now Playing**, with the record slid out |
+| ![The library](screenshots/library.png) | ![The tagger after a scan](screenshots/tagger.png) |
+| **The library** | **The tagger** after a scan |
+| ![The tape deck in blue](screenshots/cassette.png) | ![The equalizer in blue](screenshots/equalizer.png) |
+| **The tape deck**, in blue | **The equalizer**, in blue |
+
+---
+
 ## Installing
 
 Grab the newest version from the [Releases](https://github.com/M33RK4/aperture-tunes/releases) page.
