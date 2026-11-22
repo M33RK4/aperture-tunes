@@ -175,6 +175,25 @@ Two options at the bottom of the song list:
 
 ---
 
+## Security concerns
+
+Short version: nobody on the internet can get into your PC through Aperture Tunes, and nothing it reads from your songs or downloads can run on your PC. Here's what keeps it that way, and what's good to know.
+
+**What it does to keep you safe**
+
+- **The built-in server only answers the app.** The player and the tagger talk to a small server inside the app that only listens on your own PC. Every time the app starts it makes up a new secret key, and the server ignores anything that doesn't have it. So other programs, other Windows accounts on the same PC and websites can't use it to look through your folders or touch your files.
+- **Song tags, file names and lyrics only ever show up as text.** A song with weird stuff hidden in its tags can't run anything. The worst a broken file can do is not load.
+- **[ OPEN FOLDER ] only opens folders**, so it can never be used to start a program. Links only open web pages, in your normal browser.
+- **The app can't be used as a disguise.** It won't start as a plain Node.js program or with debugging switches, which is a trick some malware uses to hide inside apps you already trust.
+
+**Good to know**
+
+- **What goes online:** when the tagger looks up a song, its title and artist go to iTunes or MusicBrainz, and covers come from the Cover Art Archive. With lyric downloads on, the title, artist, album and length of the songs you play go to LRCLIB. With **New versions** on, it asks GitHub once each time it opens. Your username, library, playlists and listening stats never leave your PC.
+- **Only download it from the [Releases](https://github.com/M33RK4/aperture-tunes/releases) page.** The app isn't signed (see the ⚠ Security warning above), so Windows can't tell a real copy from one somebody changed.
+- **Keep it updated.** The app comes with its own copy of Chrome's engine (it's what plays your music and draws the screens), and newer versions of the app bring a newer one with its security fixes.
+
+---
+
 ## Credits
 
 - **Portal, Portal 2, Aperture Science and the Aperture logo** belong to **Valve Corporation**. I'm just a fan. The logo and the terminal look are used here out of love for the game, in a free personal project.

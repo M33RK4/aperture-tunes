@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, screen, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer, OUTPUT } from './server.js';
+import { startServer, OUTPUT, KEY, KEY_COOKIE } from './server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ICON = path.join(__dirname, 'build', 'icon.png');
@@ -55,6 +55,9 @@ async function createWindow() {
   process.env.APERTURE_DATA = app.getPath('userData');
   process.env.APERTURE_MUSIC = app.getPath('music');
   port = await startServer(0);
+  // the server's key (see server.js), for this run only. the app's windows send it along by themselves, nothing
+  // else on the pc has it
+  await session.defaultSession.cookies.set({ url: `http://127.0.0.1:${port}`, name: KEY_COOKIE, value: KEY, httpOnly: true, sameSite: 'strict' });
   win = new BrowserWindow({
     width: 1200,
     height: 740,
@@ -69,9 +72,10 @@ async function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), backgroundThrottling: false },
   });
   win.once('ready-to-show', () => win.show());
-  // keep everything in this window, any web links open in your normal browser
+  // keep everything in this window, any web links open in your normal browser. only web links: anything else
+  // (file:, or another app's link type) could start a program
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -201,7 +205,13 @@ ipcMain.handle('mini', (e, action) => {
   return null;
 });
 
-ipcMain.handle('open-path', (e, p) => (p && fs.existsSync(p) ? shell.openPath(p) : 'Not found'));
+// only ever a folder (the OPEN FOLDER buttons). opening a file would run it if it's a program
+ipcMain.handle('open-path', (e, p) => {
+  try {
+    if (typeof p === 'string' && fs.statSync(p).isDirectory()) return shell.openPath(p);
+  } catch {}
+  return 'Not found';
+});
 
 ipcMain.handle('open-output', () => (fs.existsSync(OUTPUT) ? shell.openPath(OUTPUT) : 'Nothing processed yet'));
 

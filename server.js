@@ -31,11 +31,31 @@ const upload = multer({
   defParamCharset: 'utf8',
 });
 
+// a new secret every time it starts. everything past the page's own files (the /api part) has to bring it along as a
+// cookie, so other programs, other Windows accounts on this pc and websites can't use the server even though they
+// can reach it. main.js puts the cookie into the app's windows before they open
+export const KEY_COOKIE = 'aperture_key';
+export const KEY = crypto.randomBytes(32).toString('hex');
+const KEY_BUF = Buffer.from(KEY);
+const hasKey = (req) => {
+  const m = /(?:^|;\s*)aperture_key=([0-9a-f]{64})(?=;|$)/.exec(req.headers.cookie || '');
+  return !!m && crypto.timingSafeEqual(Buffer.from(m[1]), KEY_BUF);
+};
+// `node server.js` on its own (for testing in a browser): there's no app to hand over the cookie, so the page
+// gets it when it loads
+let handOutKey = false;
+
 const app = express();
 // only answer requests from this pc, so random websites cant poke at the file browser
 app.use((req, res, next) => (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '') ? next() : res.status(403).end()));
-app.use(express.json({ limit: '5mb' }));
+app.use((req, res, next) => {
+  if (handOutKey) res.cookie(KEY_COOKIE, KEY, { httpOnly: true, sameSite: 'strict', path: '/' });
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
+// anything that isn't one of the page's files needs the key
+app.use((req, res, next) => (hasKey(req) ? next() : res.status(403).end()));
+app.use(express.json({ limit: '5mb' }));
 
 const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 app.get('/api/version', (req, res) => res.json({ version: PKG.version }));
@@ -323,7 +343,8 @@ app.post('/api/reset', (req, res) => {
 });
 
 // port 0 = any free port, the window just loads whichever one we get
-export function startServer(port = 0) {
+export function startServer(port = 0, { giveKeyToPage = false } = {}) {
+  handOutKey = giveKeyToPage;
   const data = process.env.APERTURE_DATA || path.join(os.tmpdir(), 'aperture-tunes-data');
   initLibrary(data);
   initLyrics(data);
@@ -335,5 +356,5 @@ export function startServer(port = 0) {
 
 // running `node server.js` starts just the server, handy for testing in a browser
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  startServer(Number(process.env.PORT) || 4517).then((p) => console.log(`Aperture Tunes server on http://localhost:${p}`));
+  startServer(Number(process.env.PORT) || 4517, { giveKeyToPage: true }).then((p) => console.log(`Aperture Tunes server on http://localhost:${p}`));
 }
